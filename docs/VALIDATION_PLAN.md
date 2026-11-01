@@ -23,9 +23,9 @@ Mục tiêu duy nhất: trả lời bằng số đo thật 3 câu hỏi — (1) 
 | D9 | ✅ Một phần 2026-11-01: JNI ping 10k calls = 0.14 µs/call (emulator x86). Chưa làm: DirectByteBuffer vs đường file | Số ở PERFORMANCE.md. DirectByteBuffer: `Deferred` — chỉ cần khi import qua stream thay vì file |
 | D10 | ✅ Một phần 2026-11-01: `core/undo` snapshot theo vùng vertex + stack có cap, host test undo/redo bit-exact + đo 52 B/vert. Chưa chạy ASan build, chưa nối vào UI/sculpt | ASan: `Not verified` — bổ sung khi có thao tác người dùng thật ở M1 |
 | D11 | ✅ Xong 2026-11-01 trên emulator: xoay, Home x3, force-stop/relaunch — không crash. Chưa test kill **trong lúc** import (import hiện ~0.3 s, khó trúng thời điểm; để M1 khi có file lớn) | Nhãn: `Emulator Tested` |
-| D12 | Benchmark tổng hợp lặp lại D3–D6, chạy 3 lần lấy trung vị | Bảng số cuối trong PERFORMANCE.md |
-| D13 | Dọn dẹp: xóa spike chết, viết README/ARCHITECTURE/PERFORMANCE/TESTING/CHANGELOG bản đầu | Repo người khác clone build được theo README |
-| D14 | Báo cáo sprint: Implemented/Tested/Verified-on-device/Not-verified cho từng mục; đề xuất phạm vi M1 chính xác | Human duyệt mới sang M1 |
+| D12 | ✅ Xong 2026-11-01 (phần emulator/host): `scripts/run_benchmarks.sh` chạy end-to-end (host bench + 3 cold runs Android), kết quả `docs/benchmark-results/2026-11-01-emulator.md` | Phần thiết bị thật của D12 vẫn mở |
+| D13 | ✅ Xong 2026-11-01: clean build thành công, không còn TODO/placeholder trong code, README + docs đầy đủ | Đã kiểm chứng build sạch trên máy dev; chưa kiểm chứng máy khác |
+| D14 | ✅ Báo cáo: `docs/SPRINT_M0_REPORT.md` (kèm đề xuất M1). Sang M1 chờ human duyệt | |
 
 ## Ngân sách hiệu năng mục tiêu (để kiểm chứng, không phải cam kết)
 Thiết bị tham chiếu 6–8GB: viewport 500k tris sculpt p95 ≤16.6ms; 1M tris orbit-only p95 ≤16.6ms; import GLB 30MB ≤3s; peak memory khi import ≤600MB trên máy 6GB. Nếu không đạt, hạ ngân sách tris có số liệu kèm theo thay vì bỏ mục tiêu.

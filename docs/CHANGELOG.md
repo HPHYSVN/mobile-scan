@@ -22,3 +22,7 @@
 - D9: `nativePing` đo JNI round-trip trong app (0.14 µs/call trên emulator x86).
 - D10: `core/undo` — snapshot command theo vùng vertex (52 B/vert), UndoStack có cap và tổng bộ nhớ đo được; host test bit-exact.
 - D11: kiểm lifecycle trên emulator: background/foreground x3, xoay màn hình, force-stop/relaunch — không crash.
+
+## 2026-11-01 — M0 đóng sprint (D12–D14)
+- `scripts/run_benchmarks.sh`: benchmark lặp lại (host + Android qua adb, tự gắn nhãn Emulator/Device), kết quả chạy đầu ở `docs/benchmark-results/2026-11-01-emulator.md` (import 98k median 146.2 ms trên emulator).
+- Clean build kiểm chứng, không còn placeholder. Báo cáo sprint `docs/SPRINT_M0_REPORT.md`: M0 đạt chức năng/tích hợp, Go/No-Go renderer vẫn mở chờ thiết bị vật lý; đề xuất phạm vi M1 chờ duyệt.
