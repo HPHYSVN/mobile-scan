@@ -26,3 +26,10 @@
 ## 2026-11-01 — M0 đóng sprint (D12–D14)
 - `scripts/run_benchmarks.sh`: benchmark lặp lại (host + Android qua adb, tự gắn nhãn Emulator/Device), kết quả chạy đầu ở `docs/benchmark-results/2026-11-01-emulator.md` (import 98k median 146.2 ms trên emulator).
 - Clean build kiểm chứng, không còn placeholder. Báo cáo sprint `docs/SPRINT_M0_REPORT.md`: M0 đạt chức năng/tích hợp, Go/No-Go renderer vẫn mở chờ thiết bị vật lý; đề xuất phạm vi M1 chờ duyệt.
+
+## 2026-11-01 — M1 lát cắt 1 (native core, chưa UI)
+- Primitives: `makePlane/makeCylinder/makeSphere` trong `core/mesh` (host test số tris/normal).
+- `core/scene`: Scene phẳng + Transform TRS→matrix (host test rotation/scale/translation).
+- `core/project`: project format v1 (`manifest.json` schemaVersion + `scene.json` + `meshes/`) dùng lại nlohmann/json đã vendor; load từ chối schema mới hơn và thiếu schemaVersion, có test từng đường lỗi.
+- Host CTest 6/6 pass; APK build OK (tăng ~4 MB debug do json parser — chấp nhận được, theo dõi ở release).
+- Chưa làm: nối scene/project vào Android UI/renderer, Compose, autosave. Renderer Android vẫn hiển thị fixture như M0.

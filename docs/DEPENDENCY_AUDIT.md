@@ -12,7 +12,7 @@ Trạng thái verify: `LICENSE verified` = đã fetch file LICENSE gốc trong p
 | tinygltf v2.9.3 | **Đang dùng** (M0 spike, geometry-only) | MIT | Header-only, đã build arm64+x86_64 | Parse đơn luồng; fastgltf vẫn là ứng viên thay thế nếu benchmark thiết bị thật kém | LICENSE verified + đã vendor kèm LICENSE vào `app/src/main/cpp/third_party/tinygltf/` |
 | meshoptimizer | Simplify, LOD, optimize index | MIT | CMake sẵn, không phụ thuộc | Thấp — phù hợp nhất trong danh sách | LICENSE verified |
 | glm | Math (nếu không tự viết) | MIT | Header-only | Thấp | Not verified |
-| nlohmann/json | Manifest phía C++ (nếu cần) | MIT | Header-only | Thấp; ưu tiên parse ở Kotlin để tránh | Not verified |
+| nlohmann/json (đi kèm tinygltf v2.9.3) | **Đang dùng**: project manifest/scene phía C++ (`core/project`) | MIT | Header-only, đã build Android | Thấp; +~4 MB APK debug (đo 2026-11-01). Lý do đổi so với kế hoạch parse ở Kotlin: project IO cần chạy host-test độc lập và JNI hiện chưa có đường truyền cấu trúc scene | LICENSE verified (trong tinygltf) |
 | stb_image | Texture decode phía C++ (nếu cần) | Public domain/MIT | Header-only | Giải mã chậm với ảnh lớn; cân nhắc dùng Android BitmapFactory thay thế | Not verified |
 | libigl | Geometry nâng cao | **MPL-2.0** | Build nặng (Eigen) | **Trung bình–cao**: file-level copyleft MPL, một số module dính CGAL/GPL. Không dùng ở core (TD-06) | LICENSE verified |
 | CGAL | Boolean/remesh | **GPL/LGPL (đa số)** | Nặng, cần GMP/MPFR | **Cao — loại trừ** cho app closed-source | Not verified (tri thức chung, cần verify nếu ai đề xuất lại) |

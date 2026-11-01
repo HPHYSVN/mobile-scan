@@ -18,4 +18,13 @@ struct Mesh {
 // Unit cube centered at origin, outward normals, 24 verts / 12 tris.
 Mesh makeCube();
 
+// Ground plane in XZ (normal +Y), size 1x1 centered at origin, 4 verts / 2 tris.
+Mesh makePlane();
+
+// Cylinder along Y, radius 0.5, height 1, centered at origin, with caps.
+Mesh makeCylinder(uint32_t segments = 24);
+
+// UV sphere radius 0.5 centered at origin.
+Mesh makeSphere(uint32_t lon = 32, uint32_t lat = 24);
+
 }  // namespace mobile3d
