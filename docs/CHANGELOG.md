@@ -33,3 +33,10 @@
 - `core/project`: project format v1 (`manifest.json` schemaVersion + `scene.json` + `meshes/`) dùng lại nlohmann/json đã vendor; load từ chối schema mới hơn và thiếu schemaVersion, có test từng đường lỗi.
 - Host CTest 6/6 pass; APK build OK (tăng ~4 MB debug do json parser — chấp nhận được, theo dõi ở release).
 - Chưa làm: nối scene/project vào Android UI/renderer, Compose, autosave. Renderer Android vẫn hiển thị fixture như M0.
+
+## 2026-11-01 — M1 lát cắt 2 (scene vào Android + editor khung)
+- Renderer vẽ scene nhiều node (GPU mesh cache theo meshRef, framing theo bounding sphere), JNI scene API: new/add primitive/add node/set transform/remove/list/save/open/export node.
+- UI khung bằng framework views (chưa Compose): thêm Cube/Sphere/Cylinder/Plane, Import fixture (sphere_98k vào `meshes/scan.glb`), Prev/Next chọn node, Delete, slider PosX/RotY/Scale, Undo/Redo cho transform (UI-level, cap 50), Save/Open/New, Export GLB, autosave khi onPause.
+- Kiểm chứng emulator bằng uiautomator + adb tap: thêm node (nodes=3), slider đổi x=0.0→1.7, Undo→0.0, Redo→1.7, Save→force-stop→mở lại khôi phục đúng 3 nodes và x=1.7; Export GLB validate Khronos 0 errors/0 warnings. Nhãn: `Emulator Tested`.
+- Bug đã sửa: kill tiến trình giữa lúc autosave làm `manifest.json` bị cắt cụt (mở project thất bại). `core/project` nay ghi file qua `.tmp` + rename nguyên tử, manifest ghi sau cùng làm commit marker. Host CTest vẫn 6/6.
+- Chưa làm: material, gizmo, import qua file picker (SAF), export toàn scene (hiện export từng node, không gồm transform), Compose. Deform spike M0 vẫn còn ở đường legacy khi scene rỗng.

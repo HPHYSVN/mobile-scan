@@ -25,3 +25,7 @@ Unit test Kotlin, instrumented test, benchmark tự động (đang thiết kế 
 - Host: CTest **5/5 pass** — thêm `test_io` (GLB export→load round-trip khớp từng float; OBJ quad fan + negative index + normals; OBJ không normal tự tính) và `test_undo` (undo khôi phục bit-exact, redo áp lại, cap 3/5 commands, 52 bytes/vert).
 - glTF-Validator chính thức của Khronos (npm `gltf-validator`, cài ở `/tmp` — không phải dependency repo): `roundtrip.glb` do exporter sinh ra **0 errors / 0 warnings**; fixture `sphere_24k.glb` cũng 0/0.
 - Emulator D9: `jni ping: 10000 calls (0.14 us/call)`. D11: 3 chu kỳ Home→mở lại (pid không đổi, không crash), xoay ngang (screenshot: sphere render đúng tỉ lệ mới), force-stop→mở lại (load lại mesh + init OK, PSS 48,927 KB). Nhãn: `Emulator Tested`.
+
+## 2026-11-01 — M1 lát 2
+- Emulator (uiautomator-driven, `Emulator Tested`): luồng editor đầy đủ — new project → thêm primitive/fixture → chọn node → slider transform → undo/redo → save → force-stop → reopen khôi phục → export GLB (validator 0/0). File `scene.json` đọc trực tiếp qua `run-as` khớp với trạng thái UI.
+- Regression: project save/load sau sửa atomic-write vẫn pass host test; `.tmp` không còn sót sau save.

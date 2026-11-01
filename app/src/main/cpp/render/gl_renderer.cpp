@@ -5,7 +5,10 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../core/project.h"
+#include "../io/gltf_exporter.h"
 #include "../io/gltf_loader.h"
+#include "../io/obj_loader.h"
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "Mobile3D", __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "Mobile3D", __VA_ARGS__)
@@ -258,13 +261,192 @@ void GlRenderer::drawFrame() {
                                 model[8], model[9], model[10]};
 
     glUseProgram(program_);
+    if (!scene_.nodes().empty()) {
+        // Scene path: view = T(0,0,-dist) * RotY(yaw) * RotX(pitch)
+        float view[16] = {
+            cy, sy * sx, sy * cx, 0.0f,
+            0.0f, cx, -sx, 0.0f,
+            -sy, cy * sx, cy * cx, 0.0f,
+            0.0f, 0.0f, -distance_, 1.0f,
+        };
+        float viewProj[16];
+        multiply(proj, view, viewProj);
+        for (const auto& node : scene_.nodes()) {
+            if (!node.visible) continue;
+            GpuMesh* gpu = ensureGpuMesh(node.meshRef);
+            if (gpu) drawMesh(*gpu, viewProj, &node.transform);
+        }
+        return;
+    }
+
     glUniformMatrix4fv(glGetUniformLocation(program_, "uMvp"), 1, GL_FALSE, mvp);
     glUniformMatrix3fv(glGetUniformLocation(program_, "uNormalMat"), 1, GL_FALSE, normalMat);
     glBindVertexArray(vao_);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh_.indices.size()), GL_UNSIGNED_INT, nullptr);
 }
 
+bool GlRenderer::cpuMeshForRef(const std::string& ref, Mesh* out, std::string* error) {
+    if (ref.rfind("primitive:", 0) == 0) {
+        const std::string kind = ref.substr(10);
+        if (kind == "cube") *out = makeCube();
+        else if (kind == "sphere") *out = makeSphere();
+        else if (kind == "cylinder") *out = makeCylinder();
+        else if (kind == "plane") *out = makePlane();
+        else {
+            if (error) *error = "unknown primitive: " + ref;
+            return false;
+        }
+        return true;
+    }
+    const std::string path = projectDir_ + "/" + ref;
+    const bool isObj = path.size() > 4 && path.compare(path.size() - 4, 4, ".obj") == 0;
+    return isObj ? loadObj(path, out, error) : loadGltf(path, out, error);
+}
+
+bool GlRenderer::exportNode(uint32_t id, const std::string& path, std::string* error) {
+    const Node* node = scene_.find(id);
+    if (!node) {
+        if (error) *error = "node not found";
+        return false;
+    }
+    Mesh cpu;
+    if (!cpuMeshForRef(node->meshRef, &cpu, error)) return false;
+    return exportGlb(cpu, path, error);
+}
+
+GlRenderer::GpuMesh* GlRenderer::ensureGpuMesh(const std::string& ref) {
+    const auto it = gpuMeshes_.find(ref);
+    if (it != gpuMeshes_.end()) return &it->second;
+
+    Mesh cpu;
+    std::string error;
+    if (!cpuMeshForRef(ref, &cpu, &error)) {
+        LOGE("scene mesh load failed %s: %s", ref.c_str(), error.c_str());
+        gpuMeshes_[ref] = GpuMesh{};
+        return &gpuMeshes_[ref];
+    }
+
+    GpuMesh gpu;
+    gpu.indexCount = static_cast<uint32_t>(cpu.indices.size());
+    float minV[3] = {1e30f, 1e30f, 1e30f}, maxV[3] = {-1e30f, -1e30f, -1e30f};
+    for (uint32_t i = 0; i < cpu.vertexCount(); ++i) {
+        const float* p = &cpu.vertices[i * 6];
+        for (int k = 0; k < 3; ++k) {
+            minV[k] = std::min(minV[k], p[k]);
+            maxV[k] = std::max(maxV[k], p[k]);
+        }
+    }
+    float radius = 0.0f;
+    for (int k = 0; k < 3; ++k) {
+        gpu.center[k] = (minV[k] + maxV[k]) * 0.5f;
+        radius = std::max(radius, (maxV[k] - minV[k]) * 0.5f);
+    }
+    gpu.scale = radius > 0.0f ? 1.0f / radius : 1.0f;
+
+    glGenVertexArrays(1, &gpu.vao);
+    glGenBuffers(1, &gpu.vbo);
+    glGenBuffers(1, &gpu.ebo);
+    glBindVertexArray(gpu.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, gpu.vbo);
+    glBufferData(GL_ARRAY_BUFFER, cpu.vertices.size() * sizeof(float), cpu.vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gpu.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, cpu.indices.size() * sizeof(uint32_t), cpu.indices.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(0));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    auto [inserted, okInsert] = gpuMeshes_.emplace(ref, gpu);
+    (void)okInsert;
+    LOGI("scene mesh ready %s: tris=%u", ref.c_str(), gpu.indexCount / 3);
+    return &inserted->second;
+}
+
+void GlRenderer::drawMesh(const GpuMesh& gpu, const float* viewProj, const Transform* nodeTransform) {
+    if (gpu.indexCount == 0) return;
+    float nodeMat[16];
+    nodeTransform->toMatrix(nodeMat);
+    // fit = Scale(gpu.scale) * T(-center)
+    float fit[16] = {};
+    fit[0] = gpu.scale; fit[5] = gpu.scale; fit[10] = gpu.scale; fit[15] = 1.0f;
+    fit[12] = -gpu.center[0] * gpu.scale;
+    fit[13] = -gpu.center[1] * gpu.scale;
+    fit[14] = -gpu.center[2] * gpu.scale;
+    float world[16], tmp[16];
+    multiply(nodeMat, fit, world);
+    multiply(viewProj, world, tmp);
+
+    const float normalMat[9] = {world[0], world[1], world[2],
+                                world[4], world[5], world[6],
+                                world[8], world[9], world[10]};
+    glUniformMatrix4fv(glGetUniformLocation(program_, "uMvp"), 1, GL_FALSE, tmp);
+    glUniformMatrix3fv(glGetUniformLocation(program_, "uNormalMat"), 1, GL_FALSE, normalMat);
+    glBindVertexArray(gpu.vao);
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(gpu.indexCount), GL_UNSIGNED_INT, nullptr);
+}
+
+void GlRenderer::newProject(const std::string& dir) {
+    projectDir_ = dir;
+    scene_.clear();
+    for (auto& [ref, gpu] : gpuMeshes_) {
+        (void)ref;
+        if (gpu.ebo) glDeleteBuffers(1, &gpu.ebo);
+        if (gpu.vbo) glDeleteBuffers(1, &gpu.vbo);
+        if (gpu.vao) glDeleteVertexArrays(1, &gpu.vao);
+    }
+    gpuMeshes_.clear();
+    deformEnabled_ = false;
+    LOGI("new project: %s", dir.c_str());
+}
+
+uint32_t GlRenderer::addPrimitive(const std::string& kind) {
+    return scene_.addNode(kind, "primitive:" + kind);
+}
+
+uint32_t GlRenderer::addNode(const std::string& name, const std::string& meshRef) {
+    return scene_.addNode(name, meshRef);
+}
+
+bool GlRenderer::setNodeTransform(uint32_t id, const float values[9]) {
+    Node* node = scene_.find(id);
+    if (!node) return false;
+    for (int i = 0; i < 3; ++i) {
+        node->transform.position[i] = values[i];
+        node->transform.rotationEuler[i] = values[3 + i];
+        node->transform.scale[i] = values[6 + i];
+    }
+    return true;
+}
+
+bool GlRenderer::removeNode(uint32_t id) { return scene_.removeNode(id); }
+
+bool GlRenderer::saveProject(std::string* error) {
+    if (projectDir_.empty()) {
+        if (error) *error = "no project dir set";
+        return false;
+    }
+    const bool ok = mobile3d::saveProject(projectDir_, scene_, error);
+    LOGI("saveProject %s -> %s", projectDir_.c_str(), ok ? "ok" : (error ? error->c_str() : "?"));
+    return ok;
+}
+
+bool GlRenderer::openProject(const std::string& dir, std::string* error) {
+    Scene loaded;
+    if (!mobile3d::loadProject(dir, &loaded, error)) return false;
+    newProject(dir);
+    scene_.restore(loaded.nodes(), loaded.nextId());
+    LOGI("openProject %s: %zu nodes", dir.c_str(), scene_.nodes().size());
+    return true;
+}
+
 void GlRenderer::shutdown() {
+    for (auto& [ref, gpu] : gpuMeshes_) {
+        (void)ref;
+        if (gpu.ebo) glDeleteBuffers(1, &gpu.ebo);
+        if (gpu.vbo) glDeleteBuffers(1, &gpu.vbo);
+        if (gpu.vao) glDeleteVertexArrays(1, &gpu.vao);
+    }
+    gpuMeshes_.clear();
     if (ebo_) glDeleteBuffers(1, &ebo_);
     if (vbo_) glDeleteBuffers(1, &vbo_);
     if (vao_) glDeleteVertexArrays(1, &vao_);

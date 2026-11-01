@@ -1,5 +1,7 @@
 #include <jni.h>
 
+#include <string>
+
 #include "../render/gl_renderer.h"
 
 using mobile3d::GlRenderer;
@@ -82,6 +84,96 @@ Java_com_mobile3d_validation_NativeEngine_nativeGetFrameStats(JNIEnv* env, jobje
     }
     env->SetDoubleArrayRegion(out, 0, 9, values);
     return out;
+}
+
+namespace {
+
+std::string toStdString(JNIEnv* env, jstring value) {
+    if (!value) return {};
+    const char* chars = env->GetStringUTFChars(value, nullptr);
+    std::string out = chars ? chars : "";
+    if (chars) env->ReleaseStringUTFChars(value, chars);
+    return out;
+}
+
+}  // namespace
+
+JNIEXPORT void JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeNewProject(JNIEnv* env, jobject, jlong handle, jstring dir) {
+    if (auto* r = fromHandle(handle)) r->newProject(toStdString(env, dir));
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeAddPrimitive(JNIEnv* env, jobject, jlong handle, jstring kind) {
+    auto* r = fromHandle(handle);
+    return r ? static_cast<jlong>(r->addPrimitive(toStdString(env, kind))) : 0;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeAddNode(JNIEnv* env, jobject, jlong handle, jstring name, jstring meshRef) {
+    auto* r = fromHandle(handle);
+    return r ? static_cast<jlong>(r->addNode(toStdString(env, name), toStdString(env, meshRef))) : 0;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeSetNodeTransform(JNIEnv* env, jobject, jlong handle, jlong id, jfloatArray values) {
+    auto* r = fromHandle(handle);
+    if (!r || !values || env->GetArrayLength(values) < 9) return JNI_FALSE;
+    float floats[9];
+    env->GetFloatArrayRegion(values, 0, 9, floats);
+    return r->setNodeTransform(static_cast<uint32_t>(id), floats) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeRemoveNode(JNIEnv*, jobject, jlong handle, jlong id) {
+    auto* r = fromHandle(handle);
+    return (r && r->removeNode(static_cast<uint32_t>(id))) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Line format per node: id;name;meshRef;visible;px;py;pz;rx;ry;rz;sx;sy;sz
+// (Names must not contain ';' in this validation build.)
+JNIEXPORT jstring JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeGetNodes(JNIEnv* env, jobject, jlong handle) {
+    std::string out;
+    if (auto* r = fromHandle(handle)) {
+        char buf[512];
+        for (const auto& node : r->scene().nodes()) {
+            const auto& t = node.transform;
+            std::snprintf(buf, sizeof(buf), "%u;%s;%s;%d;%g;%g;%g;%g;%g;%g;%g;%g;%g\n",
+                          node.id, node.name.c_str(), node.meshRef.c_str(), node.visible ? 1 : 0,
+                          t.position[0], t.position[1], t.position[2],
+                          t.rotationEuler[0], t.rotationEuler[1], t.rotationEuler[2],
+                          t.scale[0], t.scale[1], t.scale[2]);
+            out += buf;
+        }
+    }
+    return env->NewStringUTF(out.c_str());
+}
+
+// Returns empty string on success, error message otherwise.
+JNIEXPORT jstring JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeSaveProject(JNIEnv* env, jobject, jlong handle) {
+    auto* r = fromHandle(handle);
+    std::string error = r ? "" : "invalid handle";
+    if (r && !r->saveProject(&error)) { /* error set */ }
+    return env->NewStringUTF(error.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeOpenProject(JNIEnv* env, jobject, jlong handle, jstring dir) {
+    auto* r = fromHandle(handle);
+    std::string error = r ? "" : "invalid handle";
+    if (r) r->openProject(toStdString(env, dir), &error);
+    return env->NewStringUTF(error.c_str());
+}
+
+// Returns empty string on success, error message otherwise.
+JNIEXPORT jstring JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeExportNode(JNIEnv* env, jobject, jlong handle, jlong id, jstring path) {
+    auto* r = fromHandle(handle);
+    std::string error = r ? "" : "invalid handle";
+    if (r) r->exportNode(static_cast<uint32_t>(id), toStdString(env, path), &error);
+    return env->NewStringUTF(error.c_str());
 }
 
 JNIEXPORT jstring JNICALL

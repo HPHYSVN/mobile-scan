@@ -21,6 +21,17 @@ object NativeEngine {
 
     external fun nativeSetDeformEnabled(handle: Long, enabled: Boolean)
 
+    // --- Scene / project (M1). All must be called on the GL thread. ---
+    external fun nativeNewProject(handle: Long, dir: String)
+    external fun nativeAddPrimitive(handle: Long, kind: String): Long
+    external fun nativeAddNode(handle: Long, name: String, meshRef: String): Long
+    external fun nativeSetNodeTransform(handle: Long, id: Long, values: FloatArray): Boolean
+    external fun nativeRemoveNode(handle: Long, id: Long): Boolean
+    external fun nativeGetNodes(handle: Long): String
+    external fun nativeSaveProject(handle: Long): String
+    external fun nativeExportNode(handle: Long, id: Long, path: String): String
+    external fun nativeOpenProject(handle: Long, dir: String): String
+
     /** Returns [frameCount, avgFrameMs, lastFrameMs, vertexCount, triangleCount,
      *  avgDeformMs, avgNormalMs, avgUploadMs, deformVertexCount]. */
     external fun nativeGetFrameStats(handle: Long): DoubleArray

@@ -14,14 +14,30 @@ namespace {
 using nlohmann::json;
 namespace fs = std::filesystem;
 
+// Writes via a temp file + rename so a process kill mid-save can never
+// leave a truncated file behind (found by emulator kill during autosave).
 bool writeFile(const fs::path& path, const std::string& content, std::string* error) {
-    std::ofstream out(path);
-    if (!out) {
-        if (error) *error = "cannot write " + path.string();
+    const fs::path tmp = path.string() + ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::trunc);
+        if (!out) {
+            if (error) *error = "cannot write " + tmp.string();
+            return false;
+        }
+        out << content;
+        out.flush();
+        if (!out) {
+            if (error) *error = "write failed " + tmp.string();
+            return false;
+        }
+    }
+    std::error_code ec;
+    fs::rename(tmp, path, ec);
+    if (ec) {
+        if (error) *error = "rename failed for " + path.string() + ": " + ec.message();
         return false;
     }
-    out << content;
-    return static_cast<bool>(out);
+    return true;
 }
 
 bool readFile(const fs::path& path, std::string* content, std::string* error) {
@@ -59,7 +75,6 @@ bool saveProject(const std::string& dir, const Scene& scene, std::string* error)
     json manifest;
     manifest["schemaVersion"] = kProjectSchemaVersion;
     manifest["createdWith"] = "mobile3d-validation 0.1.0";
-    if (!writeFile(fs::path(dir) / "manifest.json", manifest.dump(2), error)) return false;
 
     json sceneJson;
     sceneJson["nodes"] = json::array();
@@ -74,7 +89,9 @@ bool saveProject(const std::string& dir, const Scene& scene, std::string* error)
         n["transform"]["scale"] = vec3(node.transform.scale);
         sceneJson["nodes"].push_back(n);
     }
-    return writeFile(fs::path(dir) / "scene.json", sceneJson.dump(2), error);
+    // Scene first, manifest last: the manifest acts as the commit marker.
+    if (!writeFile(fs::path(dir) / "scene.json", sceneJson.dump(2), error)) return false;
+    return writeFile(fs::path(dir) / "manifest.json", manifest.dump(2), error);
 }
 
 bool loadProject(const std::string& dir, Scene* out, std::string* error) {

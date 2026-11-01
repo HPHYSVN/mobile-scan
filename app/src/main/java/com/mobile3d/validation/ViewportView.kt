@@ -49,6 +49,55 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
         }
     }
 
+    data class NodeInfo(
+        val id: Long, val name: String, val meshRef: String, val visible: Boolean,
+        val transform: FloatArray,
+    )
+
+    private fun <T> onGl(block: () -> T, callback: (T) -> Unit) {
+        queueEvent {
+            val result = block()
+            post { callback(result) }
+        }
+    }
+
+    fun newProject(dir: String, callback: () -> Unit = {}) =
+        onGl({ NativeEngine.nativeNewProject(handle, dir) }) { callback() }
+
+    fun addPrimitive(kind: String, callback: (Long) -> Unit) =
+        onGl({ NativeEngine.nativeAddPrimitive(handle, kind) }, callback)
+
+    fun addNode(name: String, meshRef: String, callback: (Long) -> Unit) =
+        onGl({ NativeEngine.nativeAddNode(handle, name, meshRef) }, callback)
+
+    fun setNodeTransform(id: Long, values: FloatArray) {
+        queueEvent { NativeEngine.nativeSetNodeTransform(handle, id, values) }
+    }
+
+    fun removeNode(id: Long, callback: (Boolean) -> Unit) =
+        onGl({ NativeEngine.nativeRemoveNode(handle, id) }, callback)
+
+    fun exportNode(id: Long, path: String, callback: (String) -> Unit) =
+        onGl({ NativeEngine.nativeExportNode(handle, id, path) }, callback)
+
+    fun saveProject(callback: (String) -> Unit) =
+        onGl({ NativeEngine.nativeSaveProject(handle) }, callback)
+
+    fun openProject(dir: String, callback: (String) -> Unit) =
+        onGl({ NativeEngine.nativeOpenProject(handle, dir) }, callback)
+
+    fun fetchNodes(callback: (List<NodeInfo>) -> Unit) =
+        onGl({ parseNodes(NativeEngine.nativeGetNodes(handle)) }, callback)
+
+    private fun parseNodes(raw: String): List<NodeInfo> =
+        raw.lineSequence().filter { it.isNotBlank() }.map { line ->
+            val p = line.split(";")
+            NodeInfo(
+                id = p[0].toLong(), name = p[1], meshRef = p[2], visible = p[3] == "1",
+                transform = FloatArray(9) { p[4 + it].toFloat() },
+            )
+        }.toList()
+
     fun frameStats(): DoubleArray = NativeEngine.nativeGetFrameStats(handle)
 
     fun setDeformEnabled(enabled: Boolean) {
