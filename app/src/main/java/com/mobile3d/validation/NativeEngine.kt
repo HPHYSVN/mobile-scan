@@ -27,6 +27,8 @@ object NativeEngine {
     external fun nativeAddNode(handle: Long, name: String, meshRef: String): Long
     external fun nativeSetNodeTransform(handle: Long, id: Long, values: FloatArray): Boolean
     external fun nativeSetNodeColor(handle: Long, id: Long, r: Float, g: Float, b: Float): Boolean
+    external fun nativeSetPan(handle: Long, panX: Float, panY: Float)
+    external fun nativeDuplicateNode(handle: Long, id: Long): Long
     external fun nativeRemoveNode(handle: Long, id: Long): Boolean
     external fun nativeGetNodes(handle: Long): String
     external fun nativeSaveProject(handle: Long): String

@@ -252,6 +252,8 @@ void GlRenderer::drawFrame() {
         model[12 + r] = s * scale_;
     }
     model[15] = 1.0f;
+    model[12] += panX_;
+    model[13] += panY_;
     model[14] -= distance_;
     float mvp[16];
     multiply(proj, model, mvp);
@@ -267,7 +269,7 @@ void GlRenderer::drawFrame() {
             cy, sy * sx, sy * cx, 0.0f,
             0.0f, cx, -sx, 0.0f,
             -sy, cy * sx, cy * cx, 0.0f,
-            0.0f, 0.0f, -distance_, 1.0f,
+            panX_ * cy - panY_ * sy * sx, panY_ * cx, -panX_ * sy - panY_ * cy * sx - distance_, 1.0f,
         };
         float viewProj[16];
         multiply(proj, view, viewProj);
@@ -421,6 +423,21 @@ bool GlRenderer::setNodeTransform(uint32_t id, const float values[9]) {
 }
 
 bool GlRenderer::removeNode(uint32_t id) { return scene_.removeNode(id); }
+
+uint32_t GlRenderer::duplicateNode(uint32_t id) {
+    const Node* node = scene_.find(id);
+    if (!node) return 0;
+    Node copy = *node;
+    const uint32_t newId = scene_.addNode(node->name + " copy", node->meshRef);
+    Node* created = scene_.find(newId);
+    if (created) {
+        created->transform = copy.transform;
+        created->transform.position[0] += 0.35f;
+        created->visible = copy.visible;
+        created->color[0] = copy.color[0]; created->color[1] = copy.color[1]; created->color[2] = copy.color[2];
+    }
+    return newId;
+}
 
 bool GlRenderer::setNodeColor(uint32_t id, float r, float g, float b) {
     Node* node = scene_.find(id);

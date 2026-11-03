@@ -23,6 +23,8 @@ public:
     void setOrbit(float yaw, float pitch, float distance) {
         yaw_ = yaw; pitch_ = pitch; distance_ = distance;
     }
+    void setPan(float panX, float panY) { panX_ = panX; panY_ = panY; }
+    float distance() const { return distance_; }
     void setDeformEnabled(bool enabled) { deformEnabled_ = enabled; }
     bool deformEnabled() const { return deformEnabled_; }
     double avgDeformMs() const { return deformFrames_ ? deformTotalMs_ / deformFrames_ : 0.0; }
@@ -40,6 +42,7 @@ public:
     uint32_t addNode(const std::string& name, const std::string& meshRef);
     bool setNodeTransform(uint32_t id, const float values[9]);  // pos, euler, scale
     bool setNodeColor(uint32_t id, float r, float g, float b);
+    uint32_t duplicateNode(uint32_t id);
     bool removeNode(uint32_t id);
     bool saveProject(std::string* error);
     bool openProject(const std::string& dir, std::string* error);
@@ -77,6 +80,8 @@ private:
     float yaw_ = 0.6f;
     float pitch_ = 0.4f;
     float distance_ = 4.2f;
+    float panX_ = 0.0f;
+    float panY_ = 0.0f;
     float center_[3] = {0.0f, 0.0f, 0.0f};
     float scale_ = 1.0f;
     DeformRegion deform_;

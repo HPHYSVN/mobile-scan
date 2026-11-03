@@ -130,6 +130,17 @@ Java_com_mobile3d_validation_NativeEngine_nativeRemoveNode(JNIEnv*, jobject, jlo
     return (r && r->removeNode(static_cast<uint32_t>(id))) ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT void JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeSetPan(JNIEnv*, jobject, jlong handle, jfloat panX, jfloat panY) {
+    if (auto* r = fromHandle(handle)) r->setPan(panX, panY);
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeDuplicateNode(JNIEnv*, jobject, jlong handle, jlong id) {
+    auto* r = fromHandle(handle);
+    return r ? static_cast<jlong>(r->duplicateNode(static_cast<uint32_t>(id))) : 0;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_mobile3d_validation_NativeEngine_nativeSetNodeColor(JNIEnv*, jobject, jlong handle, jlong id, jfloat r, jfloat g, jfloat b) {
     auto* renderer = fromHandle(handle);

@@ -25,6 +25,7 @@ class MainActivity : Activity() {
     private lateinit var seekRotY: SeekBar
     private lateinit var seekScale: SeekBar
 
+    private lateinit var modeLabel: TextView
     private var nodes: List<ViewportView.NodeInfo> = emptyList()
 
     // Transform undo history (UI-level, capped). Native core/undo covers
@@ -89,10 +90,41 @@ class MainActivity : Activity() {
             views.forEach { addView(it, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)) }
         }
 
+        modeLabel = TextView(this).apply {
+            setTextColor(0xFFBFE3FF.toInt()); setPadding(16, 6, 16, 6); textSize = 12f
+            text = "VIEW: 1 ngón xoay • 2 ngón zoom/pan • chạm 2 lần chọn vật"
+        }
+        viewport.onEditDrag = { dx, dy ->
+            val wpp = viewport.worldPerPixel()
+            mutateSelected { tr -> tr[0] += dx * wpp; tr[1] -= dy * wpp }
+        }
+        viewport.onEditScale = { factor ->
+            mutateSelected { tr ->
+                val s = (tr[6] * factor).coerceIn(0.05f, 20f)
+                tr[6] = s; tr[7] = s; tr[8] = s
+            }
+        }
+        viewport.onEditRotate = { delta ->
+            mutateSelected { tr -> tr[4] -= delta }
+        }
+        viewport.onEditMoveY = { dyPx ->
+            val wpp = viewport.worldPerPixel()
+            mutateSelected { tr -> tr[1] += dyPx * wpp }
+        }
+        viewport.onDuplicateRequest = { duplicateSelected() }
+        viewport.onTapPick = { x, y -> Log.i(TAG, "tap pick ndc=$x,$y (raycast in Sculpt slice)") }
+
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFF14181D.toInt())
             addView(statsView)
+            addView(row(
+                button("View") { setMode(ViewportView.Mode.VIEW) },
+                button("Edit") { setMode(ViewportView.Mode.EDIT) },
+                button("Sculpt") { setMode(ViewportView.Mode.SCULPT) },
+                button("Reset Cam") { viewport.resetCamera() },
+            ))
+            addView(modeLabel)
             addView(row(
                 button("Cube") { addPrimitive("cube") },
                 button("Sphere") { addPrimitive("sphere") },
@@ -103,6 +135,7 @@ class MainActivity : Activity() {
                 button("Import fixture") { importFixture() },
                 button("Prev") { cycleSelection(-1) },
                 button("Next") { cycleSelection(1) },
+                button("Duplicate") { duplicateSelected() },
                 button("Delete") { deleteSelected() },
             ))
             addView(nodeLabel)
@@ -144,6 +177,36 @@ class MainActivity : Activity() {
     private fun newProject(withDefaultCube: Boolean) {
         viewport.newProject(projectDir.absolutePath) {
             if (withDefaultCube) addPrimitive("cube") else refreshNodes()
+        }
+    }
+
+    private fun setMode(mode: ViewportView.Mode) {
+        viewport.mode = mode
+        modeLabel.text = when (mode) {
+            ViewportView.Mode.VIEW -> "VIEW: 1 ngón xoay • 2 ngón zoom/pan • 3 ngón vuốt dọc zoom"
+            ViewportView.Mode.EDIT -> "EDIT: 1 ngón kéo di chuyển • chạm 2 lần nhân bản • 2 ngón pinch scale / xoay • 3 ngón vuốt dọc lên-xuống"
+            ViewportView.Mode.SCULPT -> "SCULPT: 1 ngón vẽ brush • 2 ngón xoay/zoom camera"
+        }
+        Log.i(TAG, "mode=$mode")
+    }
+
+    private fun mutateSelected(change: (FloatArray) -> Unit) {
+        val node = nodes.firstOrNull { it.id == selectedId } ?: return
+        val tr = node.transform.copyOf()
+        change(tr)
+        viewport.setNodeTransform(selectedId, tr)
+        System.arraycopy(tr, 0, node.transform, 0, 9)
+        syncSliders(node)
+        updateNodeLabel()
+    }
+
+    private fun duplicateSelected() {
+        if (selectedId < 0) return
+        viewport.duplicateNode(selectedId) { newId ->
+            if (newId > 0) {
+                selectedId = newId
+                refreshNodes()
+            }
         }
     }
 
