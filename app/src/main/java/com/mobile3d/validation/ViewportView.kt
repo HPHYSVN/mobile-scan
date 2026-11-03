@@ -19,10 +19,14 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
     private var lastX = 0f
     private var lastY = 0f
     private var lastPinch = 0f
-    private var lastTwist = 0f
     private var lastCentroidX = 0f
     private var lastCentroidY = 0f
     private var threeFingerStartY = 0f
+    private var downTime = 0L
+    private var downX = 0f
+    private var downY = 0f
+    private var threeFingerDownTime = 0L
+    private var threeFingerMoved = false
     private var lastTapTime = 0L
     private var lastTapX = 0f
     private var lastTapY = 0f
@@ -35,12 +39,14 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
 
     // Gesture callbacks wired by the activity (world units precomputed there).
     var onEditDrag: ((dxPx: Float, dyPx: Float) -> Unit)? = null
-    var onEditScale: ((factor: Float) -> Unit)? = null
-    var onEditRotate: ((deltaRad: Float) -> Unit)? = null
     var onEditMoveY: ((dyPx: Float) -> Unit)? = null
     var onDuplicateRequest: (() -> Unit)? = null
     var onBrush: ((ndcX: Float, ndcY: Float, phase: Int) -> Unit)? = null  // phase 0=start 1=move 2=end
     var onTapPick: ((ndcX: Float, ndcY: Float) -> Unit)? = null
+    var onElementTap: ((ndcX: Float, ndcY: Float) -> Unit)? = null
+    var onElementDrag: ((dxPx: Float, dyPx: Float) -> Unit)? = null
+    var onElementEnd: (() -> Unit)? = null
+    var onThreeFingerTap: (() -> Unit)? = null
 
     fun resetCamera() {
         yaw = 0.6f; pitch = 0.4f; distance = 4.2f; panX = 0f; panY = 0f
@@ -119,6 +125,27 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
     fun pickNode(ndcX: Float, ndcY: Float, callback: (Long) -> Unit) =
         onGl({ NativeEngine.nativePickNode(handle, ndcX, ndcY) }, callback)
 
+    fun setDisplayMode(mode: Int) {
+        queueEvent { NativeEngine.nativeSetDisplayMode(handle, mode) }
+    }
+
+    fun setShowGrid(show: Boolean) {
+        queueEvent { NativeEngine.nativeSetShowGrid(handle, show) }
+    }
+
+    @Volatile var elementMode: Int = 0  // 0=object, 1=vertex, 2=edge, 3=face (EDIT mode)
+
+    fun pickElement(nodeId: Long, mode: Int, ndcX: Float, ndcY: Float, callback: (Int) -> Unit) =
+        onGl({ NativeEngine.nativePickElement(handle, nodeId, mode, ndcX, ndcY) }, callback)
+
+    fun moveElement(dxPx: Float, dyPx: Float) {
+        queueEvent { NativeEngine.nativeMoveElement(handle, dxPx, dyPx, worldPerPixel()) }
+    }
+
+    fun endElementEdit() {
+        queueEvent { NativeEngine.nativeEndElementEdit(handle) }
+    }
+
     fun getNodeScreenBox(id: Long, callback: (FloatArray) -> Unit) =
         onGl({ NativeEngine.nativeGetNodeScreenBox(handle, id) }, callback)
 
@@ -159,6 +186,12 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
             )
         }.toList()
 
+    fun saveProjectWithThumbnail(thumbPath: String, callback: (String) -> Unit) =
+        onGl({ NativeEngine.nativeSaveProjectWithThumbnail(handle, thumbPath) }, callback)
+
+    fun captureThumbnail(path: String, callback: (Boolean) -> Unit = {}) =
+        onGl({ NativeEngine.nativeCaptureThumbnail(handle, path) }, callback)
+
     fun frameStats(): DoubleArray = NativeEngine.nativeGetFrameStats(handle)
 
     fun setDeformEnabled(enabled: Boolean) {
@@ -173,6 +206,7 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastX = event.x; lastY = event.y
+                downTime = System.currentTimeMillis(); downX = event.x; downY = event.y
                 if (mode == Mode.SCULPT) {
                     onBrush?.invoke(ndcX(event.x), ndcY(event.y), 0)
                 }
@@ -195,12 +229,15 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (event.pointerCount == 2) {
                     lastPinch = pinchDistance(event)
-                    lastTwist = twistAngle(event)
                     lastCentroidX = (event.getX(0) + event.getX(1)) / 2
                     lastCentroidY = (event.getY(0) + event.getY(1)) / 2
                 }
                 if (event.pointerCount == 3) {
                     threeFingerStartY = (event.getY(0) + event.getY(1) + event.getY(2)) / 3
+                    if (threeFingerDownTime == 0L) {
+                        threeFingerDownTime = System.currentTimeMillis()
+                        threeFingerMoved = false
+                    }
                 }
                 if (mode == Mode.SCULPT && event.pointerCount == 2) {
                     onBrush?.invoke(0f, 0f, 2)  // end stroke when switching to orbit
@@ -213,40 +250,36 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
                             yaw += (event.x - lastX) * 0.01f
                             pitch = (pitch + (event.y - lastY) * 0.01f).coerceIn(-1.4f, 1.4f)
                         }
-                        Mode.EDIT -> onEditDrag?.invoke(event.x - lastX, event.y - lastY)
+                        Mode.EDIT -> {
+                            if (elementMode > 0) onElementDrag?.invoke(event.x - lastX, event.y - lastY)
+                            else onEditDrag?.invoke(event.x - lastX, event.y - lastY)
+                        }
                         Mode.SCULPT -> onBrush?.invoke(ndcX(event.x), ndcY(event.y), 1)
                     }
                     2 -> {
                         val d = pinchDistance(event)
                         val cx = (event.getX(0) + event.getX(1)) / 2
                         val cy = (event.getY(0) + event.getY(1)) / 2
-                        when (mode) {
-                            Mode.VIEW, Mode.SCULPT -> {
-                                if (lastPinch > 0f && d > 0f) {
-                                    distance = (distance * lastPinch / d).coerceIn(1.2f, 15f)
-                                }
-                                // Two-finger pan moves the camera target.
-                                val wpp = worldPerPixel()
-                                panX -= (cx - lastCentroidX) * wpp
-                                panY += (cy - lastCentroidY) * wpp
-                            }
-                            Mode.EDIT -> {
-                                if (lastPinch > 0f && d > 0f) onEditScale?.invoke(d / lastPinch)
-                                val angle = twistAngle(event)
-                                if (lastTwist != 0f) onEditRotate?.invoke(angleDelta(angle, lastTwist))
-                                lastTwist = angle
-                            }
+                        // Two fingers are always camera: pinch zoom + drag pan
+                        // (object scale lives in the corner handle / Scale slider).
+                        if (lastPinch > 0f && d > 0f) {
+                            distance = (distance * lastPinch / d).coerceIn(1.2f, 15f)
                         }
+                        val wpp = worldPerPixel()
+                        panX -= (cx - lastCentroidX) * wpp
+                        panY += (cy - lastCentroidY) * wpp
                         lastPinch = d
                         lastCentroidX = cx; lastCentroidY = cy
                     }
                     3 -> {
                         val cy = (event.getY(0) + event.getY(1) + event.getY(2)) / 3
+                        if (abs(cy - threeFingerStartY) > 8) threeFingerMoved = true
                         if (mode == Mode.EDIT) {
+                            // Three-finger vertical drag: raise/lower the object.
                             onEditMoveY?.invoke(-(cy - threeFingerStartY))
-                        } else if (mode == Mode.VIEW) {
-                            // Three-finger vertical swipe: dolly.
-                            distance = (distance + (cy - threeFingerStartY) * 0.01f).coerceIn(1.2f, 15f)
+                        } else {
+                            // Elsewhere: three-finger vertical drag pans the camera vertically.
+                            panY += (cy - threeFingerStartY) * worldPerPixel()
                         }
                         threeFingerStartY = cy
                     }
@@ -254,11 +287,32 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
                 lastX = event.x; lastY = event.y
             }
             MotionEvent.ACTION_UP -> {
+                // Three-finger quick tap resets the camera.
+                if (threeFingerDownTime > 0L && !threeFingerMoved &&
+                    System.currentTimeMillis() - threeFingerDownTime < 350
+                ) {
+                    resetCamera()
+                    onThreeFingerTap?.invoke()
+                }
+                threeFingerDownTime = 0L
+                // Tap = select (short press, almost no movement).
+                val isTap = System.currentTimeMillis() - downTime < 350 &&
+                    abs(event.x - downX) < 24 && abs(event.y - downY) < 24
+                if (isTap) {
+                    when {
+                        mode == Mode.EDIT && elementMode > 0 ->
+                            onElementTap?.invoke(ndcX(event.x), ndcY(event.y))
+                        mode != Mode.SCULPT ->
+                            onTapPick?.invoke(ndcX(event.x), ndcY(event.y))
+                        else -> Unit
+                    }
+                }
                 if (mode == Mode.SCULPT) onBrush?.invoke(ndcX(event.x), ndcY(event.y), 2)
+                if (mode == Mode.EDIT && elementMode > 0) onElementEnd?.invoke()
                 lastPinch = 0f
             }
             MotionEvent.ACTION_POINTER_UP -> {
-                lastPinch = 0f; lastTwist = 0f
+                lastPinch = 0f
                 if (mode == Mode.SCULPT && event.pointerCount == 2) {
                     // Lifting one of two fingers ends nothing; brush resumes on next 1-finger move.
                 }
@@ -273,17 +327,6 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
 
     private fun ndcX(x: Float) = if (width > 0) 2f * x / width - 1f else 0f
     private fun ndcY(y: Float) = if (height > 0) 1f - 2f * y / height else 0f
-
-    private fun twistAngle(event: MotionEvent): Float =
-        kotlin.math.atan2(event.getY(1) - event.getY(0), event.getX(1) - event.getX(0))
-
-    private fun angleDelta(a: Float, b: Float): Float {
-        var d = a - b
-        val pi = Math.PI.toFloat()
-        while (d > pi) d -= 2 * pi
-        while (d < -pi) d += 2 * pi
-        return d
-    }
 
     private fun pinchDistance(event: MotionEvent): Float {
         val dx = event.getX(0) - event.getX(1)

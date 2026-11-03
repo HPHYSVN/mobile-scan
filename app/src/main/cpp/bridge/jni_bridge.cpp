@@ -236,6 +236,53 @@ Java_com_mobile3d_validation_NativeEngine_nativeExportScene(JNIEnv* env, jobject
     return env->NewStringUTF(error.c_str());
 }
 
+JNIEXPORT void JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeSetDisplayMode(JNIEnv*, jobject, jlong handle, jint mode) {
+    if (auto* r = fromHandle(handle)) r->setDisplayMode(mode);
+}
+
+JNIEXPORT void JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeSetShowGrid(JNIEnv*, jobject, jlong handle, jboolean show) {
+    if (auto* r = fromHandle(handle)) r->setShowGrid(show == JNI_TRUE);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativePickElement(JNIEnv*, jobject, jlong handle, jlong nodeId, jint mode, jfloat ndcX, jfloat ndcY) {
+    auto* r = fromHandle(handle);
+    return r ? r->pickElement(static_cast<uint32_t>(nodeId), mode, ndcX, ndcY) : 0;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeMoveElement(JNIEnv*, jobject, jlong handle, jfloat dxPx, jfloat dyPx, jfloat worldPerPixel) {
+    auto* r = fromHandle(handle);
+    return (r && r->moveElement(dxPx, dyPx, worldPerPixel)) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeEndElementEdit(JNIEnv*, jobject, jlong handle) {
+    if (auto* r = fromHandle(handle)) r->endElementEdit();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeCaptureThumbnail(JNIEnv* env, jobject, jlong handle, jstring path) {
+    auto* r = fromHandle(handle);
+    return (r && r->captureThumbnail(toStdString(env, path), 480)) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Save + thumbnail in ONE GL-thread event so autosave-on-pause cannot race
+// surface teardown (thumbnail queued separately never ran while paused).
+JNIEXPORT jstring JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeSaveProjectWithThumbnail(JNIEnv* env, jobject, jlong handle, jstring thumbPath) {
+    auto* r = fromHandle(handle);
+    std::string error = r ? "" : "invalid handle";
+    if (r && r->saveProject(&error)) {
+        if (!r->captureThumbnail(toStdString(env, thumbPath), 480)) {
+            error = "thumbnail failed";
+        }
+    }
+    return env->NewStringUTF(error.c_str());
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_mobile3d_validation_NativeEngine_nativeGetGlInfo(JNIEnv* env, jobject, jlong handle) {
     auto* r = fromHandle(handle);

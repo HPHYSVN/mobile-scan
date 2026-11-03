@@ -29,6 +29,7 @@ uniform mat3 uNormalMat;
 out vec3 vNormal;
 void main() {
     vNormal = uNormalMat * aNormal;
+    gl_PointSize = 14.0;
     gl_Position = uMvp * vec4(aPos, 1.0);
 }
 )";
@@ -123,10 +124,63 @@ bool GlRenderer::init() {
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
     glEnable(GL_DEPTH_TEST);
+    buildGrid();
     start_ = std::chrono::steady_clock::now();
     last_ = start_;
     LOGI("renderer init ok: verts=%u tris=%u", vertexCount(), triangleCount());
     return true;
+}
+
+void GlRenderer::buildGrid() {
+    // Ground plane grid at y=0 (origin 0,0,0), +/-5 units, 1-unit steps,
+    // plus RGB-ish axes: X red-ish, Y green-ish, Z blue-ish (drawn separately).
+    std::vector<float> verts;  // interleaved pos+normal like mesh buffers
+    auto line = [&verts](float x1, float y1, float z1, float x2, float y2, float z2) {
+        verts.insert(verts.end(), {x1, y1, z1, 0, 1, 0, x2, y2, z2, 0, 1, 0});
+    };
+    const int half = 5;
+    uint32_t grayVerts = 0;
+    for (int i = -half; i <= half; ++i) {
+        if (i == 0) continue;  // axes drawn separately
+        const float f = static_cast<float>(i);
+        line(f, 0, -static_cast<float>(half), f, 0, static_cast<float>(half));
+        line(-static_cast<float>(half), 0, f, static_cast<float>(half), 0, f);
+        grayVerts += 4;
+    }
+    gridGrayCount_ = grayVerts;
+    line(-static_cast<float>(half), 0, 0, static_cast<float>(half), 0, 0);       // X axis
+    line(0, 0, 0, 0, static_cast<float>(half), 0);                               // Y axis
+    line(0, 0, -static_cast<float>(half), 0, 0, static_cast<float>(half));       // Z axis
+    gridVertexCount_ = static_cast<uint32_t>(verts.size() / 6);
+
+    glGenVertexArrays(1, &gridVao_);
+    glGenBuffers(1, &gridVbo_);
+    glBindVertexArray(gridVao_);
+    glBindBuffer(GL_ARRAY_BUFFER, gridVbo_);
+    glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(0));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+}
+
+void GlRenderer::drawGrid(const float* viewProj) {
+    if (!showGrid_ || !gridVao_) return;
+    glUniformMatrix4fv(glGetUniformLocation(program_, "uMvp"), 1, GL_FALSE, viewProj);
+    const float identity[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    glUniformMatrix3fv(glGetUniformLocation(program_, "uNormalMat"), 1, GL_FALSE, identity);
+    glBindVertexArray(gridVao_);
+    GLint colorLoc = glGetUniformLocation(program_, "uColor");
+    // Gray grid, then axes X / Y / Z (vertex order after the gray block).
+    glUniform3f(colorLoc, 0.28f, 0.32f, 0.38f);
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(gridGrayCount_));
+    const uint32_t axisVerts = (gridVertexCount_ - gridGrayCount_) / 3;
+    glUniform3f(colorLoc, 0.85f, 0.3f, 0.3f);
+    glDrawArrays(GL_LINES, static_cast<GLsizei>(gridGrayCount_), static_cast<GLsizei>(axisVerts));
+    glUniform3f(colorLoc, 0.3f, 0.85f, 0.4f);
+    glDrawArrays(GL_LINES, static_cast<GLsizei>(gridGrayCount_ + axisVerts), static_cast<GLsizei>(axisVerts));
+    glUniform3f(colorLoc, 0.35f, 0.5f, 0.95f);
+    glDrawArrays(GL_LINES, static_cast<GLsizei>(gridGrayCount_ + 2 * axisVerts), static_cast<GLsizei>(axisVerts));
 }
 
 double GlRenderer::loadMesh(const std::string& path) {
@@ -268,6 +322,11 @@ void GlRenderer::drawFrame() {
                                 model[8], model[9], model[10]};
 
     glUseProgram(program_);
+    if (scene_.nodes().empty()) {
+        float legacyViewProj[16];
+        buildViewProj(legacyViewProj);
+        drawGrid(legacyViewProj);
+    }
     if (!scene_.nodes().empty()) {
         // Scene path: view = T(0,0,-dist) * RotY(yaw) * RotX(pitch)
         float view[16] = {
@@ -278,10 +337,14 @@ void GlRenderer::drawFrame() {
         };
         float viewProj[16];
         multiply(proj, view, viewProj);
+        drawGrid(viewProj);
         for (const auto& node : scene_.nodes()) {
             if (!node.visible) continue;
             GpuMesh* gpu = ensureGpuMesh(node.meshRef);
-            if (gpu) drawMesh(*gpu, viewProj, &node);
+            if (gpu) {
+                currentDrawNodeId_ = node.id;
+                drawMesh(*gpu, viewProj, &node);
+            }
         }
         return;
     }
@@ -405,9 +468,30 @@ void GlRenderer::drawMesh(const GpuMesh& gpu, const float* viewProj, const Node*
                                 world[8], world[9], world[10]};
     glUniformMatrix4fv(glGetUniformLocation(program_, "uMvp"), 1, GL_FALSE, tmp);
     glUniformMatrix3fv(glGetUniformLocation(program_, "uNormalMat"), 1, GL_FALSE, normalMat);
-    glUniform3f(glGetUniformLocation(program_, "uColor"), node->color[0], node->color[1], node->color[2]);
     glBindVertexArray(gpu.vao);
-    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(gpu.indexCount), GL_UNSIGNED_INT, nullptr);
+    GLint colorLoc = glGetUniformLocation(program_, "uColor");
+    if (displayMode_ != 1) {
+        glUniform3f(colorLoc, node->color[0], node->color[1], node->color[2]);
+        // Push the solid fill back slightly so the edge pass stays visible.
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(1.0f, 1.0f);
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(gpu.indexCount), GL_UNSIGNED_INT, nullptr);
+        glDisable(GL_POLYGON_OFFSET_FILL);
+    }
+    if (displayMode_ != 0) {
+        // Triangle-edge overlay (in wireframe mode this is the only pass).
+        glUniform3f(colorLoc, 0.75f, 0.95f, 0.8f);
+        glDrawElements(GL_LINES, static_cast<GLsizei>(gpu.indexCount), GL_UNSIGNED_INT, nullptr);
+    }
+    // Selected element (vertex/edge/face) highlight for the active node.
+    // (drawMesh does not receive the node id; highlight is matched by caller
+    // through elementHighlightNode_ set from pickElement.)
+    if (highlightCount_ > 0 && highlightNode_ == currentDrawNodeId_) {
+        glUniform3f(colorLoc, 1.0f, 0.55f, 0.2f);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, highlightEbo_);
+        glDrawElements(GL_POINTS, static_cast<GLsizei>(highlightCount_), GL_UNSIGNED_INT, nullptr);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gpu.ebo);  // restore VAO state
+    }
 }
 
 void GlRenderer::newProject(const std::string& dir) {
@@ -834,6 +918,176 @@ int GlRenderer::brushStroke(uint32_t nodeId, float ndcX, float ndcY, int phase) 
     return static_cast<int>(affected.size());
 }
 
+int GlRenderer::pickElement(uint32_t nodeId, int elementMode, float ndcX, float ndcY) {
+    Node* node = scene_.find(nodeId);
+    if (!node) return 0;
+    GpuMesh* gpu = ensureGpuMesh(node->meshRef);
+    if (!gpu || gpu->indexCount == 0) return 0;
+    const auto cpuIt = cpuMeshes_.find(node->meshRef);
+    if (cpuIt == cpuMeshes_.end()) return 0;
+    const Mesh& mesh = cpuIt->second;
+
+    float viewProj[16], world[16], invWorld[16];
+    buildViewProj(viewProj);
+    nodeWorld(*node, *gpu, world);
+    if (!invert4(world, invWorld)) return 0;
+    float origin[3], dir[3];
+    makeRay(viewProj, ndcX, ndcY, origin, dir);
+    float localOrigin[3], localTarget[3];
+    transformPoint4(invWorld, origin[0], origin[1], origin[2], localOrigin);
+    transformPoint4(invWorld, origin[0] + dir[0], origin[1] + dir[1], origin[2] + dir[2], localTarget);
+    float localDir[3] = {localTarget[0] - localOrigin[0], localTarget[1] - localOrigin[1], localTarget[2] - localOrigin[2]};
+    const float len = std::sqrt(localDir[0] * localDir[0] + localDir[1] * localDir[1] + localDir[2] * localDir[2]);
+    if (len == 0.0f) return 0;
+    localDir[0] /= len; localDir[1] /= len; localDir[2] /= len;
+
+    const RayHit hit = raycastMesh(mesh, localOrigin, localDir);
+    if (!hit.hit) {
+        elementVerts_.clear();
+        highlightCount_ = 0;
+        return 0;
+    }
+
+    const uint32_t a = mesh.indices[hit.face * 3];
+    const uint32_t b = mesh.indices[hit.face * 3 + 1];
+    const uint32_t c = mesh.indices[hit.face * 3 + 2];
+    elementVerts_.clear();
+    if (elementMode == 1) {
+        uint32_t best = a;
+        float bestDist = 1e30f;
+        for (uint32_t v : {a, b, c}) {
+            const float* p = &mesh.vertices[v * 6];
+            const float d = (p[0] - hit.point[0]) * (p[0] - hit.point[0]) +
+                            (p[1] - hit.point[1]) * (p[1] - hit.point[1]) +
+                            (p[2] - hit.point[2]) * (p[2] - hit.point[2]);
+            if (d < bestDist) { bestDist = d; best = v; }
+        }
+        elementVerts_ = {best};
+    } else if (elementMode == 2) {
+        const uint32_t edges[3][2] = {{a, b}, {b, c}, {c, a}};
+        float bestDist = 1e30f;
+        int bestEdge = 0;
+        for (int e = 0; e < 3; ++e) {
+            const float* p = &mesh.vertices[edges[e][0] * 6];
+            const float* q = &mesh.vertices[edges[e][1] * 6];
+            const float mx = (p[0] + q[0]) * 0.5f, my = (p[1] + q[1]) * 0.5f, mz = (p[2] + q[2]) * 0.5f;
+            const float d = (mx - hit.point[0]) * (mx - hit.point[0]) +
+                            (my - hit.point[1]) * (my - hit.point[1]) +
+                            (mz - hit.point[2]) * (mz - hit.point[2]);
+            if (d < bestDist) { bestDist = d; bestEdge = e; }
+        }
+        elementVerts_ = {edges[bestEdge][0], edges[bestEdge][1]};
+    } else {
+        elementVerts_ = {a, b, c};
+    }
+
+    elementNode_ = nodeId;
+    highlightNode_ = nodeId;
+    elementStart_.clear();
+    elementDelta_[0] = elementDelta_[1] = elementDelta_[2] = 0.0f;
+    for (uint32_t idx : elementVerts_) {
+        std::array<float, 6> values{};
+        std::copy(&mesh.vertices[idx * 6], &mesh.vertices[idx * 6] + 6, values.begin());
+        elementStart_[idx] = values;
+    }
+    if (adjacency_.find(node->meshRef) == adjacency_.end()) {
+        DeformRegion region;
+        region.buildAdjacency(mesh);
+        adjacency_[node->meshRef] = std::move(region);
+    }
+
+    // Highlight buffer (indices of the selected element).
+    if (!highlightEbo_) glGenBuffers(1, &highlightEbo_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, highlightEbo_);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, elementVerts_.size() * sizeof(uint32_t),
+                 elementVerts_.data(), GL_DYNAMIC_DRAW);
+    highlightCount_ = static_cast<uint32_t>(elementVerts_.size());
+    LOGI("pickElement mode=%d verts=%u", elementMode, highlightCount_);
+    return highlightCount_;
+}
+
+bool GlRenderer::moveElement(float dxPx, float dyPx, float worldPerPixel) {
+    if (elementVerts_.empty()) return false;
+    Node* node = scene_.find(elementNode_);
+    if (!node) return false;
+    GpuMesh* gpu = ensureGpuMesh(node->meshRef);
+    const auto cpuIt = cpuMeshes_.find(node->meshRef);
+    if (!gpu || cpuIt == cpuMeshes_.end()) return false;
+    Mesh& mesh = cpuIt->second;
+
+    // Camera right/up in world space from the orbit angles.
+    const float cy = std::cos(yaw_), sy = std::sin(yaw_);
+    const float cx = std::cos(pitch_), sx = std::sin(pitch_);
+    const float right[3] = {cy, 0.0f, -sy};
+    const float up[3] = {sy * sx, cx, cy * sx};
+    float worldDelta[3];
+    for (int k = 0; k < 3; ++k) {
+        worldDelta[k] = right[k] * dxPx * worldPerPixel + up[k] * (-dyPx) * worldPerPixel;
+    }
+
+    float world[16], invWorld[16];
+    nodeWorld(*node, *gpu, world);
+    if (!invert4(world, invWorld)) return false;
+    // Direction transform (ignore translation).
+    float localDelta[3];
+    for (int r = 0; r < 3; ++r) {
+        localDelta[r] = invWorld[r] * worldDelta[0] + invWorld[4 + r] * worldDelta[1] + invWorld[8 + r] * worldDelta[2];
+    }
+
+    for (int k = 0; k < 3; ++k) elementDelta_[k] += localDelta[k];
+    for (const auto& [idx, start] : elementStart_) {
+        float* p = &mesh.vertices[idx * 6];
+        p[0] = start[0] + elementDelta_[0];
+        p[1] = start[1] + elementDelta_[1];
+        p[2] = start[2] + elementDelta_[2];
+    }
+
+    DeformRegion& adjacency = adjacency_[node->meshRef];
+    adjacency.setSelected(elementVerts_);
+    adjacency.recomputeNormals(&mesh);
+    sculptDirty_.insert(node->meshRef);
+
+    std::vector<uint32_t> sorted = elementVerts_;
+    std::sort(sorted.begin(), sorted.end());
+    glBindBuffer(GL_ARRAY_BUFFER, gpu->vbo);
+    for (uint32_t idx : sorted) {
+        glBufferSubData(GL_ARRAY_BUFFER, static_cast<GLintptr>(idx * 6 * sizeof(float)),
+                        6 * sizeof(float), &mesh.vertices[idx * 6]);
+    }
+    return true;
+}
+
+void GlRenderer::endElementEdit() {
+    if (elementVerts_.empty() || elementStart_.empty()) return;
+    if (elementDelta_[0] == 0.0f && elementDelta_[1] == 0.0f && elementDelta_[2] == 0.0f) return;
+    Node* node = scene_.find(elementNode_);
+    if (!node) return;
+    const auto it = cpuMeshes_.find(node->meshRef);
+    if (it == cpuMeshes_.end()) return;
+    std::vector<uint32_t> indices;
+    std::vector<float> before, after;
+    for (const auto& [idx, start] : elementStart_) {
+        indices.push_back(idx);
+        before.insert(before.end(), start.begin(), start.end());
+        const float* current = &it->second.vertices[idx * 6];
+        after.insert(after.end(), current, current + 6);
+    }
+    VertexSnapshotCommand command;
+    command.setData(indices, before, after);
+    sculptUndo_.push_back({node->meshRef, std::move(command)});
+    if (sculptUndo_.size() > 50) sculptUndo_.erase(sculptUndo_.begin());
+    sculptRedo_.clear();
+    // Next drag on the same element starts from its current position.
+    for (const auto& [idx, start] : elementStart_) {
+        (void)start;
+        std::array<float, 6> values{};
+        const float* current = &it->second.vertices[idx * 6];
+        std::copy(current, current + 6, values.begin());
+        elementStart_[idx] = values;
+    }
+    elementDelta_[0] = elementDelta_[1] = elementDelta_[2] = 0.0f;
+}
+
 bool GlRenderer::undoSculpt() {
     if (sculptUndo_.empty()) return false;
     SculptEntry entry = std::move(sculptUndo_.back());
@@ -900,6 +1154,35 @@ bool GlRenderer::exportScene(const std::string& path, std::string* error) {
     }
     LOGI("export scene: %u nodes, %u tris", exportedNodes, combined.triangleCount());
     return exportGlb(combined, path, error);
+}
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "../third_party/tinygltf/stb_image_write.h"
+
+bool GlRenderer::captureThumbnail(const std::string& path, int maxWidth) {
+    if (width_ <= 0 || height_ <= 0) return false;
+    // Render one clean frame first so the readback is never the clear color.
+    drawFrame();
+    std::vector<unsigned char> pixels(static_cast<size_t>(width_) * height_ * 4);
+    glReadPixels(0, 0, width_, height_, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    if (glGetError() != GL_NO_ERROR) return false;
+
+    const int outW = std::min(width_, maxWidth);
+    const int outH = std::max(1, height_ * outW / width_);
+    std::vector<unsigned char> scaled(static_cast<size_t>(outW) * outH * 4);
+    for (int y = 0; y < outH; ++y) {
+        // Flip vertically (GL origin is bottom-left) while downscaling.
+        const int srcY = height_ - 1 - (y * height_ / outH);
+        for (int x = 0; x < outW; ++x) {
+            const int srcX = x * width_ / outW;
+            const unsigned char* src = &pixels[(static_cast<size_t>(srcY) * width_ + srcX) * 4];
+            unsigned char* dst = &scaled[(static_cast<size_t>(y) * outW + x) * 4];
+            dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst[3] = 255;
+        }
+    }
+    const bool ok = stbi_write_png(path.c_str(), outW, outH, 4, scaled.data(), outW * 4) != 0;
+    LOGI("thumbnail %s -> %s (%dx%d)", path.c_str(), ok ? "ok" : "FAILED", outW, outH);
+    return ok;
 }
 
 void GlRenderer::shutdown() {

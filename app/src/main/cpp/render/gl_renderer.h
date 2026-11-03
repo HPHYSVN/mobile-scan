@@ -30,6 +30,9 @@ public:
         yaw_ = yaw; pitch_ = pitch; distance_ = distance;
     }
     void setPan(float panX, float panY) { panX_ = panX; panY_ = panY; }
+    // Display: 0=solid, 1=wireframe (triangle edges), 2=solid+edges.
+    void setDisplayMode(int mode) { displayMode_ = mode; }
+    void setShowGrid(bool show) { showGrid_ = show; }
     float distance() const { return distance_; }
     void setDeformEnabled(bool enabled) { deformEnabled_ = enabled; }
     bool deformEnabled() const { return deformEnabled_; }
@@ -62,6 +65,13 @@ public:
     bool nodeScreenBox(uint32_t id, float out[4]);
     bool undoSculpt();
     bool redoSculpt();
+
+    // Element editing (vertex/edge/face): pick selects an element of the
+    // given node, move drags it in the camera plane, end commits undo.
+    // elementMode: 1=vertex, 2=edge, 3=face. Returns selected vertex count.
+    int pickElement(uint32_t nodeId, int elementMode, float ndcX, float ndcY);
+    bool moveElement(float dxPx, float dyPx, float worldPerPixel);
+    void endElementEdit();
     bool removeNode(uint32_t id);
     bool saveProject(std::string* error);
     bool openProject(const std::string& dir, std::string* error);
@@ -76,6 +86,8 @@ public:
     const Scene& scene() const { return scene_; }
     const std::string& projectDir() const { return projectDir_; }
 
+    // Reads back the framebuffer (GL thread) and writes a downscaled PNG.
+    bool captureThumbnail(const std::string& path, int maxWidth);
     const std::string& glInfo() const { return glInfo_; }
     uint64_t frameCount() const { return frameCount_; }
     double avgFrameMs() const { return frameCount_ ? totalFrameMs_ / frameCount_ : 0.0; }
@@ -118,6 +130,13 @@ private:
     double uploadTotalMs_ = 0.0;
     double adjacencyMs_ = 0.0;
 
+    int displayMode_ = 2;
+    bool showGrid_ = true;
+    unsigned int gridVao_ = 0, gridVbo_ = 0;
+    uint32_t gridVertexCount_ = 0, gridGrayCount_ = 0;
+    void buildGrid();
+    void drawGrid(const float* viewProj);
+
     Scene scene_;
     std::string projectDir_;
     std::map<std::string, GpuMesh> gpuMeshes_;
@@ -134,6 +153,15 @@ private:
     struct SculptEntry { std::string ref; VertexSnapshotCommand command; };
     std::vector<SculptEntry> sculptUndo_;
     std::vector<SculptEntry> sculptRedo_;
+
+    uint32_t elementNode_ = 0;
+    uint32_t highlightNode_ = 0;
+    uint32_t currentDrawNodeId_ = 0;
+    std::vector<uint32_t> elementVerts_;
+    std::map<uint32_t, std::array<float, 6>> elementStart_;
+    float elementDelta_[3] = {0.0f, 0.0f, 0.0f};
+    unsigned int highlightEbo_ = 0;
+    uint32_t highlightCount_ = 0;
 
     void buildViewProj(float out[16]);
     void nodeWorld(const Node& node, const GpuMesh& gpu, float out[16]);

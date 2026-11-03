@@ -38,3 +38,8 @@ Unit test Kotlin, instrumented test, benchmark tự động (đang thiết kế 
 - Capture: CameraX mở trên emulator (virtual scene), chụp lưu `source/capture_*.jpg` (185K), ARCore probe trả `unknown/transient` trên emulator (đúng kỳ vọng, không phải hỗ trợ thật).
 - Regression: host CTest 8/8, `run_benchmarks.sh` chạy lại (PSS ~55 MB), assembleRelease thành công (unsigned).
 Tất cả vẫn là `Emulator Tested`. Thiết bị thật / AR session: `Not verified`.
+
+## 2026-11-04 — Redesign verification (Emulator Tested)
+- ProjectsActivity: danh sách rỗng hiển thị hướng dẫn; tạo dự án mở editor; quay lại bằng ☰ → Danh sách dự án: thẻ dự án hiện thumbnail (480x1066 PNG chụp bằng glReadPixels, 29K) đúng mô hình đã kéo đỉnh.
+- Editor layout: screenshot xác nhận ☰ trái trên, ? giữa, ↩/↪ phải, 4 nút Create/Edit/Sculpt/Export dưới cùng; Edit bung panel Object/Vertex/Edge/Face + sliders + Display/Grid + palette; lưới grid + 3 trục màu + cạnh tam giác trên khối hiển thị đúng.
+- Vertex edit: chạm chọn được 1 đỉnh (log pickElement verts=1, điểm cam highlight), kéo làm khối biến dạng rõ rệt. Chưa test tự động Edge/Face riêng (cùng đường code pickElement mode 2/3) — ghi nhận là kiểm chứng một phần.

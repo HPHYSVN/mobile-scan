@@ -34,6 +34,9 @@ object NativeEngine {
     external fun nativePickNode(handle: Long, ndcX: Float, ndcY: Float): Long
     external fun nativeUndoSculpt(handle: Long): Boolean
     external fun nativeGetNodeScreenBox(handle: Long, id: Long): FloatArray
+    external fun nativePickElement(handle: Long, nodeId: Long, mode: Int, ndcX: Float, ndcY: Float): Int
+    external fun nativeMoveElement(handle: Long, dxPx: Float, dyPx: Float, worldPerPixel: Float): Boolean
+    external fun nativeEndElementEdit(handle: Long)
     external fun nativeRedoSculpt(handle: Long): Boolean
     external fun nativeRemoveNode(handle: Long, id: Long): Boolean
     external fun nativeGetNodes(handle: Long): String
@@ -45,5 +48,9 @@ object NativeEngine {
      *  avgDeformMs, avgNormalMs, avgUploadMs, deformVertexCount]. */
     external fun nativeGetFrameStats(handle: Long): DoubleArray
     external fun nativeExportScene(handle: Long, path: String): String
+    external fun nativeSetDisplayMode(handle: Long, mode: Int)
+    external fun nativeSetShowGrid(handle: Long, show: Boolean)
+    external fun nativeCaptureThumbnail(handle: Long, path: String): Boolean
+    external fun nativeSaveProjectWithThumbnail(handle: Long, thumbPath: String): String
     external fun nativeGetGlInfo(handle: Long): String
 }

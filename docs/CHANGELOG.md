@@ -47,3 +47,13 @@
 - Export nâng cao: GLB / OBJ triangle / OBJ polygon-quad (gộp tứ giác, ngưỡng 0.98), Export % decimation bằng meshoptimizer (MIT, vendor subset), Subdiv 0–2, Export Scene bake transform. Sửa bug quad merge chết trên Android do `std::minmax` (libc++).
 - Capture: CameraX (Apache-2.0) chụp ảnh vào `source/` kèm hướng dẫn chụp; ARCore chỉ probe availability. Import File qua SAF; Help/Hướng dẫn lần đầu trong app; panel điều khiển cuộn được, giới hạn chiều cao.
 - Build release (unsigned) thành công; host CTest 8/8.
+
+## 2026-11-04 — Thiết kế lại giao diện & thao tác (theo app modeling mobile)
+- Màn hình chính mới `ProjectsActivity`: danh sách dự án dạng thẻ chữ nhật có thumbnail (chụp native `glReadPixels` khi lưu/thoát, 480px), tên, số vật thể, ngày sửa; nút "+ Dự án mới"; chạm mở, giữ lâu đổi tên, Xoá có xác nhận. Dự án lưu dưới `files/projects/<id>/` (giữ tương thích `current_project` cũ).
+- Editor: viewport toàn màn hình; góc trái trên = ☰ (menu dự án/tuỳ chọn bung 1 chạm), giữa trên = "?" hướng dẫn, phải trên = Undo/Redo; dưới cùng = 4 nút Create/Edit/Sculpt/Export, bấm để bung panel chức năng tương ứng (bấm lại thu gọn, nút đang mở tô xanh).
+- Thao tác: chạm = chọn vật (raycast), kéo ở khoảng trống = xoay camera, 2 ngón = zoom/pan camera, 3 ngón chạm nhanh = reset camera, 3 ngón vuốt dọc ở Edit = nâng/hạ vật. Kéo góc ô handle vẫn scale vật.
+- Mặt phẳng toạ độ: lưới grid tại gốc 0,0,0 với trục X đỏ / Y xanh lá / Z dương, bật-tắt bằng nút Grid.
+- Hiển thị lưới: Display Solid / Wireframe / Edges (cạnh tam giác) như app mẫu.
+- Sửa theo phần tử: Edit có Object/Vertex/Edge/Face — chạm chọn đỉnh/cạnh/mặt (highlight điểm cam), kéo để dời, undo chung với sculpt. `core/raycast` có host test.
+- Sửa thumbnail race: Save+Thumbnail gộp một GL event (`nativeSaveProjectWithThumbnail`) vì PixelCopy/event rời không chạy kịp khi activity pause.
+- Kiểm chứng emulator: tạo dự án → sửa đỉnh kéo thành mũi nhọn → về danh sách thấy thumbnail đúng mô hình; host CTest 8/8; release build OK. Vẫn `Emulator Tested`.
