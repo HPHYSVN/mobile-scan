@@ -28,7 +28,9 @@ public:
     // Recomputes normals of selected vertices using adjacency faces.
     void recomputeNormals(Mesh* mesh) const;
 
+    void setSelected(std::vector<uint32_t> indices) { selected_ = std::move(indices); }
     const std::vector<uint32_t>& selected() const { return selected_; }
+    const std::vector<std::vector<uint32_t>>& vertexFaces() const { return vertexFaces_; }
     uint32_t adjacencyBuildCount() const { return static_cast<uint32_t>(vertexFaces_.size()); }
 
 private:

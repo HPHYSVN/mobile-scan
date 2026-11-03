@@ -17,6 +17,9 @@ class VertexSnapshotCommand {
 public:
     void captureBefore(const Mesh& mesh, const std::vector<uint32_t>& indices);
     void captureAfter(const Mesh& mesh);
+    // Directly installs captured data (used by brush strokes that record
+    // before-values incrementally while the stroke is in progress).
+    void setData(std::vector<uint32_t> indices, std::vector<float> before, std::vector<float> after);
     void undo(Mesh* mesh) const;
     void redo(Mesh* mesh) const;
     size_t bytes() const;

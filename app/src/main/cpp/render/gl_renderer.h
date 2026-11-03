@@ -5,9 +5,15 @@
 #include <map>
 #include <string>
 
+#include <array>
+#include <map>
+#include <set>
+#include <unordered_map>
+
 #include "../core/deform.h"
 #include "../core/mesh.h"
 #include "../core/scene.h"
+#include "../core/undo.h"
 
 namespace mobile3d {
 
@@ -43,11 +49,30 @@ public:
     bool setNodeTransform(uint32_t id, const float values[9]);  // pos, euler, scale
     bool setNodeColor(uint32_t id, float r, float g, float b);
     uint32_t duplicateNode(uint32_t id);
+
+    // --- Sculpt (M2 slice) ---
+    // Brush modes: 0=Draw, 1=Dig, 2=Smooth, 3=Inflate.
+    void setBrush(float radiusWorld, float strength, int mode) {
+        brushRadius_ = radiusWorld; brushStrength_ = strength; brushMode_ = mode;
+    }
+    // phase: 0=start stroke + dab, 1=dab, 2=end stroke. Returns affected verts.
+    int brushStroke(uint32_t nodeId, float ndcX, float ndcY, int phase);
+    int pickNode(float ndcX, float ndcY);  // node id or -1
+    // Screen-space bounding box (NDC) of a node for edit handles.
+    bool nodeScreenBox(uint32_t id, float out[4]);
+    bool undoSculpt();
+    bool redoSculpt();
     bool removeNode(uint32_t id);
     bool saveProject(std::string* error);
     bool openProject(const std::string& dir, std::string* error);
     // Exports one node's mesh (without node transform) to a .glb file.
-    bool exportNode(uint32_t id, const std::string& path, std::string* error);
+    // format: 0=GLB triangles, 1=OBJ triangles, 2=OBJ quads.
+    // resolutionPercent scales triangle count via simplification (100 = keep),
+    // subdivideLevels (0..2) runs before simplification.
+    // Exports all visible nodes into one GLB with node transforms baked in.
+    bool exportScene(const std::string& path, std::string* error);
+    bool exportNodeEx(uint32_t id, const std::string& path, int format,
+                      int resolutionPercent, int subdivideLevels, std::string* error);
     const Scene& scene() const { return scene_; }
     const std::string& projectDir() const { return projectDir_; }
 
@@ -64,6 +89,7 @@ private:
         uint32_t indexCount = 0;
         float center[3] = {0.0f, 0.0f, 0.0f};
         float scale = 1.0f;
+        float radius = 0.5f;  // local bounding-sphere radius
     };
     // Creates (once per ref) GPU buffers for a scene meshRef; nullptr on failure.
     GpuMesh* ensureGpuMesh(const std::string& ref);
@@ -95,6 +121,22 @@ private:
     Scene scene_;
     std::string projectDir_;
     std::map<std::string, GpuMesh> gpuMeshes_;
+    std::map<std::string, Mesh> cpuMeshes_;
+    std::set<std::string> sculptDirty_;  // refs whose CPU mesh differs from its source
+    std::map<std::string, DeformRegion> adjacency_;
+
+    float brushRadius_ = 0.35f;
+    float brushStrength_ = 0.02f;
+    int brushMode_ = 0;
+    bool strokeActive_ = false;
+    uint32_t strokeNode_ = 0;
+    std::map<uint32_t, std::array<float, 6>> strokeBefore_;
+    struct SculptEntry { std::string ref; VertexSnapshotCommand command; };
+    std::vector<SculptEntry> sculptUndo_;
+    std::vector<SculptEntry> sculptRedo_;
+
+    void buildViewProj(float out[16]);
+    void nodeWorld(const Node& node, const GpuMesh& gpu, float out[16]);
 
     std::string glInfo_;
     std::chrono::steady_clock::time_point start_{};

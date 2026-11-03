@@ -8,6 +8,14 @@ using mobile3d::GlRenderer;
 
 namespace {
 GlRenderer* fromHandle(jlong handle) { return reinterpret_cast<GlRenderer*>(handle); }
+
+std::string toStdString(JNIEnv* env, jstring value) {
+    if (!value) return {};
+    const char* chars = env->GetStringUTFChars(value, nullptr);
+    std::string out = chars ? chars : "";
+    if (chars) env->ReleaseStringUTFChars(value, chars);
+    return out;
+}
 }  // namespace
 
 extern "C" {
@@ -85,18 +93,6 @@ Java_com_mobile3d_validation_NativeEngine_nativeGetFrameStats(JNIEnv* env, jobje
     env->SetDoubleArrayRegion(out, 0, 9, values);
     return out;
 }
-
-namespace {
-
-std::string toStdString(JNIEnv* env, jstring value) {
-    if (!value) return {};
-    const char* chars = env->GetStringUTFChars(value, nullptr);
-    std::string out = chars ? chars : "";
-    if (chars) env->ReleaseStringUTFChars(value, chars);
-    return out;
-}
-
-}  // namespace
 
 JNIEXPORT void JNICALL
 Java_com_mobile3d_validation_NativeEngine_nativeNewProject(JNIEnv* env, jobject, jlong handle, jstring dir) {
@@ -185,12 +181,58 @@ Java_com_mobile3d_validation_NativeEngine_nativeOpenProject(JNIEnv* env, jobject
     return env->NewStringUTF(error.c_str());
 }
 
-// Returns empty string on success, error message otherwise.
+JNIEXPORT void JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeSetBrush(JNIEnv*, jobject, jlong handle, jfloat radius, jfloat strength, jint mode) {
+    if (auto* r = fromHandle(handle)) r->setBrush(radius, strength, mode);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeBrushStroke(JNIEnv*, jobject, jlong handle, jlong nodeId, jfloat ndcX, jfloat ndcY, jint phase) {
+    auto* r = fromHandle(handle);
+    return r ? r->brushStroke(static_cast<uint32_t>(nodeId), ndcX, ndcY, phase) : 0;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativePickNode(JNIEnv*, jobject, jlong handle, jfloat ndcX, jfloat ndcY) {
+    auto* r = fromHandle(handle);
+    return r ? static_cast<jlong>(r->pickNode(ndcX, ndcY)) : -1;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeUndoSculpt(JNIEnv*, jobject, jlong handle) {
+    auto* r = fromHandle(handle);
+    return (r && r->undoSculpt()) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeRedoSculpt(JNIEnv*, jobject, jlong handle) {
+    auto* r = fromHandle(handle);
+    return (r && r->redoSculpt()) ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jstring JNICALL
-Java_com_mobile3d_validation_NativeEngine_nativeExportNode(JNIEnv* env, jobject, jlong handle, jlong id, jstring path) {
+Java_com_mobile3d_validation_NativeEngine_nativeExportNodeEx(JNIEnv* env, jobject, jlong handle, jlong id, jstring path, jint format, jint resolutionPercent, jint subdivideLevels) {
     auto* r = fromHandle(handle);
     std::string error = r ? "" : "invalid handle";
-    if (r) r->exportNode(static_cast<uint32_t>(id), toStdString(env, path), &error);
+    if (r) r->exportNodeEx(static_cast<uint32_t>(id), toStdString(env, path), format, resolutionPercent, subdivideLevels, &error);
+    return env->NewStringUTF(error.c_str());
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeGetNodeScreenBox(JNIEnv* env, jobject, jlong handle, jlong id) {
+    auto* r = fromHandle(handle);
+    float box[4] = {0, 0, 0, 0};
+    const bool ok = r && r->nodeScreenBox(static_cast<uint32_t>(id), box);
+    jfloatArray out = env->NewFloatArray(ok ? 4 : 0);
+    if (ok) env->SetFloatArrayRegion(out, 0, 4, box);
+    return out;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeExportScene(JNIEnv* env, jobject, jlong handle, jstring path) {
+    auto* r = fromHandle(handle);
+    std::string error = r ? "" : "invalid handle";
+    if (r) r->exportScene(toStdString(env, path), &error);
     return env->NewStringUTF(error.c_str());
 }
 

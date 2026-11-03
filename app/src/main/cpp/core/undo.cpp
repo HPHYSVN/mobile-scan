@@ -29,6 +29,12 @@ void VertexSnapshotCommand::captureBefore(const Mesh& mesh, const std::vector<ui
     after_.clear();
 }
 
+void VertexSnapshotCommand::setData(std::vector<uint32_t> indices, std::vector<float> before, std::vector<float> after) {
+    indices_ = std::move(indices);
+    before_ = std::move(before);
+    after_ = std::move(after);
+}
+
 void VertexSnapshotCommand::captureAfter(const Mesh& mesh) {
     after_ = readVertices(mesh, indices_);
 }

@@ -29,14 +29,21 @@ object NativeEngine {
     external fun nativeSetNodeColor(handle: Long, id: Long, r: Float, g: Float, b: Float): Boolean
     external fun nativeSetPan(handle: Long, panX: Float, panY: Float)
     external fun nativeDuplicateNode(handle: Long, id: Long): Long
+    external fun nativeSetBrush(handle: Long, radius: Float, strength: Float, mode: Int)
+    external fun nativeBrushStroke(handle: Long, nodeId: Long, ndcX: Float, ndcY: Float, phase: Int): Int
+    external fun nativePickNode(handle: Long, ndcX: Float, ndcY: Float): Long
+    external fun nativeUndoSculpt(handle: Long): Boolean
+    external fun nativeGetNodeScreenBox(handle: Long, id: Long): FloatArray
+    external fun nativeRedoSculpt(handle: Long): Boolean
     external fun nativeRemoveNode(handle: Long, id: Long): Boolean
     external fun nativeGetNodes(handle: Long): String
     external fun nativeSaveProject(handle: Long): String
-    external fun nativeExportNode(handle: Long, id: Long, path: String): String
+    external fun nativeExportNodeEx(handle: Long, id: Long, path: String, format: Int, resolutionPercent: Int, subdivideLevels: Int): String
     external fun nativeOpenProject(handle: Long, dir: String): String
 
     /** Returns [frameCount, avgFrameMs, lastFrameMs, vertexCount, triangleCount,
      *  avgDeformMs, avgNormalMs, avgUploadMs, deformVertexCount]. */
     external fun nativeGetFrameStats(handle: Long): DoubleArray
+    external fun nativeExportScene(handle: Long, path: String): String
     external fun nativeGetGlInfo(handle: Long): String
 }

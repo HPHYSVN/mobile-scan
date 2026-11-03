@@ -5,11 +5,14 @@ add_library(mobile3d SHARED
     core/mesh.cpp
     core/deform.cpp
     core/undo.cpp
+    core/raycast.cpp
     core/scene.cpp
     core/project.cpp
     io/gltf_loader.cpp
     io/gltf_exporter.cpp
     io/obj_loader.cpp
+    io/mesh_ops.cpp
+    third_party/meshoptimizer/simplifier.cpp
     render/gl_renderer.cpp
     bridge/jni_bridge.cpp
 )

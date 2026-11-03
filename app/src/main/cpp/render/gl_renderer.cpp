@@ -5,8 +5,13 @@
 #include <algorithm>
 #include <cmath>
 
+#include <filesystem>
+#include <unordered_set>
+
 #include "../core/project.h"
+#include "../core/raycast.h"
 #include "../io/gltf_exporter.h"
+#include "../io/mesh_ops.h"
 #include "../io/gltf_loader.h"
 #include "../io/obj_loader.h"
 
@@ -289,24 +294,28 @@ void GlRenderer::drawFrame() {
 }
 
 bool GlRenderer::cpuMeshForRef(const std::string& ref, Mesh* out, std::string* error) {
-    if (ref.rfind("primitive:", 0) == 0) {
-        const std::string kind = ref.substr(10);
+    // Instance suffix "#<nodeId>" gives every node its own CPU/GPU mesh so
+    // sculpting one node never deforms another that shares the source mesh.
+    const std::string base = ref.substr(0, ref.find('#'));
+    if (base.rfind("primitive:", 0) == 0) {
+        const std::string kind = base.substr(10);
         if (kind == "cube") *out = makeCube();
         else if (kind == "sphere") *out = makeSphere();
         else if (kind == "cylinder") *out = makeCylinder();
         else if (kind == "plane") *out = makePlane();
         else {
-            if (error) *error = "unknown primitive: " + ref;
+            if (error) *error = "unknown primitive: " + base;
             return false;
         }
         return true;
     }
-    const std::string path = projectDir_ + "/" + ref;
+    const std::string path = projectDir_ + "/" + base;
     const bool isObj = path.size() > 4 && path.compare(path.size() - 4, 4, ".obj") == 0;
     return isObj ? loadObj(path, out, error) : loadGltf(path, out, error);
 }
 
-bool GlRenderer::exportNode(uint32_t id, const std::string& path, std::string* error) {
+bool GlRenderer::exportNodeEx(uint32_t id, const std::string& path, int format,
+                              int resolutionPercent, int subdivideLevels, std::string* error) {
     const Node* node = scene_.find(id);
     if (!node) {
         if (error) *error = "node not found";
@@ -314,7 +323,15 @@ bool GlRenderer::exportNode(uint32_t id, const std::string& path, std::string* e
     }
     Mesh cpu;
     if (!cpuMeshForRef(node->meshRef, &cpu, error)) return false;
-    return exportGlb(cpu, path, error);
+    Mesh processed = subdivideMesh(cpu, subdivideLevels);
+    if (resolutionPercent < 100) {
+        Mesh simplified;
+        if (!simplifyMesh(processed, resolutionPercent / 100.0f, &simplified, error)) return false;
+        processed = std::move(simplified);
+    }
+    LOGI("export node %u: format=%d tris=%u (from %u)", id, format, processed.triangleCount(), cpu.triangleCount());
+    if (format == 0) return exportGlb(processed, path, error);
+    return exportObj(processed, path, format == 2, error);
 }
 
 GlRenderer::GpuMesh* GlRenderer::ensureGpuMesh(const std::string& ref) {
@@ -329,6 +346,7 @@ GlRenderer::GpuMesh* GlRenderer::ensureGpuMesh(const std::string& ref) {
         return &gpuMeshes_[ref];
     }
 
+    cpuMeshes_[ref] = cpu;  // retained for picking/sculpting
     GpuMesh gpu;
     gpu.indexCount = static_cast<uint32_t>(cpu.indices.size());
     float minV[3] = {1e30f, 1e30f, 1e30f}, maxV[3] = {-1e30f, -1e30f, -1e30f};
@@ -339,12 +357,15 @@ GlRenderer::GpuMesh* GlRenderer::ensureGpuMesh(const std::string& ref) {
             maxV[k] = std::max(maxV[k], p[k]);
         }
     }
+    for (int k = 0; k < 3; ++k) gpu.center[k] = (minV[k] + maxV[k]) * 0.5f;
     float radius = 0.0f;
-    for (int k = 0; k < 3; ++k) {
-        gpu.center[k] = (minV[k] + maxV[k]) * 0.5f;
-        radius = std::max(radius, (maxV[k] - minV[k]) * 0.5f);
+    for (uint32_t i = 0; i < cpu.vertexCount(); ++i) {
+        const float* p = &cpu.vertices[i * 6];
+        const float dx = p[0] - gpu.center[0], dy = p[1] - gpu.center[1], dz = p[2] - gpu.center[2];
+        radius = std::max(radius, std::sqrt(dx * dx + dy * dy + dz * dz));
     }
     gpu.scale = radius > 0.0f ? 1.0f / radius : 1.0f;
+    gpu.radius = radius;
 
     glGenVertexArrays(1, &gpu.vao);
     glGenBuffers(1, &gpu.vbo);
@@ -404,11 +425,15 @@ void GlRenderer::newProject(const std::string& dir) {
 }
 
 uint32_t GlRenderer::addPrimitive(const std::string& kind) {
-    return scene_.addNode(kind, "primitive:" + kind);
+    const uint32_t id = scene_.addNode(kind, "primitive:" + kind);
+    if (Node* node = scene_.find(id)) node->meshRef += "#" + std::to_string(id);
+    return id;
 }
 
 uint32_t GlRenderer::addNode(const std::string& name, const std::string& meshRef) {
-    return scene_.addNode(name, meshRef);
+    const uint32_t id = scene_.addNode(name, meshRef);
+    if (Node* node = scene_.find(id)) node->meshRef += "#" + std::to_string(id);
+    return id;
 }
 
 bool GlRenderer::setNodeTransform(uint32_t id, const float values[9]) {
@@ -451,6 +476,33 @@ bool GlRenderer::saveProject(std::string* error) {
         if (error) *error = "no project dir set";
         return false;
     }
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(projectDir_ + "/meshes", ec);
+        if (ec) {
+            if (error) *error = "cannot create meshes dir: " + ec.message();
+            return false;
+        }
+    }
+    // Persist sculpted geometry: write the node's current CPU mesh to its
+    // own file and repoint the node at it (scene.json only stores refs).
+    std::vector<uint32_t> nodeIds;
+    for (const auto& node : scene_.nodes()) nodeIds.push_back(node.id);
+    for (uint32_t nodeId : nodeIds) {
+        Node* node = scene_.find(nodeId);
+        if (!node || sculptDirty_.find(node->meshRef) == sculptDirty_.end()) continue;
+        const auto it = cpuMeshes_.find(node->meshRef);
+        if (it == cpuMeshes_.end()) continue;
+        const std::string fileName = "node_" + std::to_string(node->id) + ".glb";
+        std::string exportError;
+        if (!exportGlb(it->second, projectDir_ + "/meshes/" + fileName, &exportError)) {
+            if (error) *error = "sculpt persist failed: " + exportError;
+            return false;
+        }
+        LOGI("persisted sculpted mesh for node %u -> meshes/%s", node->id, fileName.c_str());
+        node->meshRef = "meshes/" + fileName;
+    }
+    sculptDirty_.clear();
     const bool ok = mobile3d::saveProject(projectDir_, scene_, error);
     LOGI("saveProject %s -> %s", projectDir_.c_str(), ok ? "ok" : (error ? error->c_str() : "?"));
     return ok;
@@ -463,6 +515,391 @@ bool GlRenderer::openProject(const std::string& dir, std::string* error) {
     scene_.restore(loaded.nodes(), loaded.nextId());
     LOGI("openProject %s: %zu nodes", dir.c_str(), scene_.nodes().size());
     return true;
+}
+
+namespace {
+
+bool invert4(const float m[16], float out[16]) {
+    float inv[16];
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
+             m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] -
+             m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] +
+             m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] -
+              m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] -
+             m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] +
+             m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] -
+             m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] +
+              m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] +
+             m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] -
+             m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] +
+              m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] -
+              m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] -
+             m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] +
+             m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] -
+              m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] +
+              m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+    const float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+    if (det == 0.0f) return false;
+    const float invDet = 1.0f / det;
+    for (int i = 0; i < 16; ++i) out[i] = inv[i] * invDet;
+    return true;
+}
+
+void transformPoint4(const float m[16], float x, float y, float z, float out[3]) {
+    const float w = m[3] * x + m[7] * y + m[11] * z + m[15];
+    out[0] = (m[0] * x + m[4] * y + m[8] * z + m[12]) / w;
+    out[1] = (m[1] * x + m[5] * y + m[9] * z + m[13]) / w;
+    out[2] = (m[2] * x + m[6] * y + m[10] * z + m[14]) / w;
+}
+
+}  // namespace
+
+void GlRenderer::buildViewProj(float out[16]) {
+    const float aspect = height_ > 0 ? static_cast<float>(width_) / static_cast<float>(height_) : 1.0f;
+    float proj[16];
+    perspective(0.9f, aspect, 0.1f, 100.0f, proj);
+    const float cy = std::cos(yaw_), sy = std::sin(yaw_);
+    const float cx = std::cos(pitch_), sx = std::sin(pitch_);
+    float view[16] = {
+        cy, sy * sx, sy * cx, 0.0f,
+        0.0f, cx, -sx, 0.0f,
+        -sy, cy * sx, cy * cx, 0.0f,
+        panX_ * cy - panY_ * sy * sx, panY_ * cx, -panX_ * sy - panY_ * cy * sx - distance_, 1.0f,
+    };
+    multiply(proj, view, out);
+}
+
+void GlRenderer::nodeWorld(const Node& node, const GpuMesh& gpu, float out[16]) {
+    float nodeMat[16];
+    node.transform.toMatrix(nodeMat);
+    float fit[16] = {};
+    fit[0] = gpu.scale; fit[5] = gpu.scale; fit[10] = gpu.scale; fit[15] = 1.0f;
+    fit[12] = -gpu.center[0] * gpu.scale;
+    fit[13] = -gpu.center[1] * gpu.scale;
+    fit[14] = -gpu.center[2] * gpu.scale;
+    multiply(nodeMat, fit, out);
+}
+
+namespace {
+
+void makeRay(const float viewProj[16], float ndcX, float ndcY, float origin[3], float dir[3]) {
+    float inv[16];
+    invert4(viewProj, inv);
+    float nearP[3], farP[3];
+    transformPoint4(inv, ndcX, ndcY, -1.0f, nearP);
+    transformPoint4(inv, ndcX, ndcY, 1.0f, farP);
+    for (int k = 0; k < 3; ++k) { origin[k] = nearP[k]; dir[k] = farP[k] - nearP[k]; }
+    const float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+    if (len > 0.0f) { dir[0] /= len; dir[1] /= len; dir[2] /= len; }
+}
+
+}  // namespace
+
+bool GlRenderer::nodeScreenBox(uint32_t id, float out[4]) {
+    const Node* node = scene_.find(id);
+    if (!node) return false;
+    GpuMesh* gpu = ensureGpuMesh(node->meshRef);
+    if (!gpu || gpu->indexCount == 0) return false;
+    float viewProj[16], world[16], mvp[16];
+    buildViewProj(viewProj);
+    nodeWorld(*node, *gpu, world);
+    multiply(viewProj, world, mvp);
+    float centerWorld[3];
+    transformPoint4(world, gpu->center[0], gpu->center[1], gpu->center[2], centerWorld);
+    const float worldScale = std::sqrt(world[0] * world[0] + world[1] * world[1] + world[2] * world[2]);
+    const float radiusWorld = gpu->radius * worldScale;
+    float centerNdc[3], topNdc[3];
+    transformPoint4(mvp, gpu->center[0], gpu->center[1], gpu->center[2], centerNdc);
+    // Approximate screen radius by projecting a point one radius up in world Y.
+    const float topWorld[3] = {centerWorld[0], centerWorld[1] + radiusWorld, centerWorld[2]};
+    transformPoint4(viewProj, topWorld[0], topWorld[1], topWorld[2], topNdc);
+    const float ry = std::fabs(topNdc[1] - centerNdc[1]);
+    // Same pixel radius on both axes: NDC x-range scales with height/width.
+    const float rxNdc = (width_ > 0 && height_ > 0)
+                            ? ry * static_cast<float>(height_) / static_cast<float>(width_)
+                            : ry;
+    out[0] = centerNdc[0] - rxNdc;
+    out[1] = centerNdc[1] - ry;
+    out[2] = centerNdc[0] + rxNdc;
+    out[3] = centerNdc[1] + ry;
+    return true;
+}
+
+int GlRenderer::pickNode(float ndcX, float ndcY) {
+    float viewProj[16];
+    buildViewProj(viewProj);
+    float origin[3], dir[3];
+    makeRay(viewProj, ndcX, ndcY, origin, dir);
+
+    int bestId = -1;
+    float bestDist = 1e30f;
+    for (const auto& node : scene_.nodes()) {
+        if (!node.visible) continue;
+        GpuMesh* gpu = ensureGpuMesh(node.meshRef);
+        if (!gpu || gpu->indexCount == 0) continue;
+        const auto cpuIt = cpuMeshes_.find(node.meshRef);
+        if (cpuIt == cpuMeshes_.end()) continue;
+        float world[16], invWorld[16], mvp[16];
+        nodeWorld(node, *gpu, world);
+        multiply(viewProj, world, mvp);
+        if (!invert4(world, invWorld)) continue;
+        float localOrigin[3], localPoint[3];
+        transformPoint4(invWorld, origin[0], origin[1], origin[2], localOrigin);
+        const float worldDirPoint[3] = {origin[0] + dir[0], origin[1] + dir[1], origin[2] + dir[2]};
+        transformPoint4(invWorld, worldDirPoint[0], worldDirPoint[1], worldDirPoint[2], localPoint);
+        float localDir[3] = {localPoint[0] - localOrigin[0], localPoint[1] - localOrigin[1], localPoint[2] - localOrigin[2]};
+        const float len = std::sqrt(localDir[0] * localDir[0] + localDir[1] * localDir[1] + localDir[2] * localDir[2]);
+        if (len == 0.0f) continue;
+        localDir[0] /= len; localDir[1] /= len; localDir[2] /= len;
+        const RayHit hit = raycastMesh(cpuIt->second, localOrigin, localDir);
+        if (!hit.hit) continue;
+        float worldHit[3];
+        transformPoint4(world, hit.point[0], hit.point[1], hit.point[2], worldHit);
+        const float dx = worldHit[0] - origin[0], dy = worldHit[1] - origin[1], dz = worldHit[2] - origin[2];
+        const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist < bestDist) { bestDist = dist; bestId = static_cast<int>(node.id); }
+    }
+    return bestId;
+}
+
+int GlRenderer::brushStroke(uint32_t nodeId, float ndcX, float ndcY, int phase) {
+    if (phase == 2) {
+        if (strokeActive_ && !strokeBefore_.empty()) {
+            const Node* node = scene_.find(strokeNode_);
+            if (node) {
+                const auto it = cpuMeshes_.find(node->meshRef);
+                if (it != cpuMeshes_.end()) {
+                    std::vector<uint32_t> indices;
+                    std::vector<float> before, after;
+                    indices.reserve(strokeBefore_.size());
+                    for (const auto& [idx, values] : strokeBefore_) {
+                        indices.push_back(idx);
+                        before.insert(before.end(), values.begin(), values.end());
+                        const float* current = &it->second.vertices[idx * 6];
+                        after.insert(after.end(), current, current + 6);
+                    }
+                    VertexSnapshotCommand command;
+                    command.setData(indices, before, after);
+                    sculptUndo_.push_back({node->meshRef, std::move(command)});
+                    if (sculptUndo_.size() > 50) sculptUndo_.erase(sculptUndo_.begin());
+                    sculptRedo_.clear();
+                }
+            }
+        }
+        strokeActive_ = false;
+        strokeBefore_.clear();
+        return 0;
+    }
+
+    Node* node = scene_.find(nodeId);
+    if (!node || !node->visible) return 0;
+    GpuMesh* gpu = ensureGpuMesh(node->meshRef);
+    if (!gpu || gpu->indexCount == 0) return 0;
+    auto cpuIt = cpuMeshes_.find(node->meshRef);
+    if (cpuIt == cpuMeshes_.end()) return 0;
+    Mesh& mesh = cpuIt->second;
+
+    if (phase == 0) {
+        strokeActive_ = true;
+        strokeNode_ = nodeId;
+        strokeBefore_.clear();
+        if (adjacency_.find(node->meshRef) == adjacency_.end()) {
+            DeformRegion region;
+            region.buildAdjacency(mesh);
+            adjacency_[node->meshRef] = std::move(region);
+        }
+    }
+    if (!strokeActive_ || strokeNode_ != nodeId) return 0;
+
+    float viewProj[16], world[16], invWorld[16];
+    buildViewProj(viewProj);
+    nodeWorld(*node, *gpu, world);
+    if (!invert4(world, invWorld)) return 0;
+    float origin[3], dir[3];
+    makeRay(viewProj, ndcX, ndcY, origin, dir);
+    float localOrigin[3], localTarget[3];
+    transformPoint4(invWorld, origin[0], origin[1], origin[2], localOrigin);
+    transformPoint4(invWorld, origin[0] + dir[0], origin[1] + dir[1], origin[2] + dir[2], localTarget);
+    float localDir[3] = {localTarget[0] - localOrigin[0], localTarget[1] - localOrigin[1], localTarget[2] - localOrigin[2]};
+    const float dirLen = std::sqrt(localDir[0] * localDir[0] + localDir[1] * localDir[1] + localDir[2] * localDir[2]);
+    if (dirLen == 0.0f) return 0;
+    localDir[0] /= dirLen; localDir[1] /= dirLen; localDir[2] /= dirLen;
+
+    const RayHit hit = raycastMesh(mesh, localOrigin, localDir);
+    if (!hit.hit) return 0;
+
+    const float worldScale = std::sqrt(world[0] * world[0] + world[1] * world[1] + world[2] * world[2]);
+    const float localRadius = worldScale > 0.0f ? brushRadius_ / worldScale : brushRadius_;
+    const float radius2 = localRadius * localRadius;
+
+    std::vector<uint32_t> affected;
+    for (uint32_t i = 0; i < mesh.vertexCount(); ++i) {
+        const float* p = &mesh.vertices[i * 6];
+        const float dx = p[0] - hit.point[0], dy = p[1] - hit.point[1], dz = p[2] - hit.point[2];
+        if (dx * dx + dy * dy + dz * dz <= radius2) affected.push_back(i);
+    }
+    if (affected.empty()) return 0;
+
+    for (uint32_t idx : affected) {
+        if (strokeBefore_.find(idx) == strokeBefore_.end()) {
+            std::array<float, 6> values{};
+            std::copy(&mesh.vertices[idx * 6], &mesh.vertices[idx * 6] + 6, values.begin());
+            strokeBefore_[idx] = values;
+        }
+    }
+
+    DeformRegion& adjacency = adjacency_[node->meshRef];
+    if (brushMode_ == 2) {
+        // Smooth: move each affected vertex towards the average of its neighbours.
+        std::vector<std::array<float, 3>> targets;
+        targets.reserve(affected.size());
+        const auto& faces = adjacency.vertexFaces();
+        for (uint32_t idx : affected) {
+            std::unordered_set<uint32_t> neighbours;
+            if (idx < faces.size()) {
+                for (uint32_t f : faces[idx]) {
+                    for (int k = 0; k < 3; ++k) {
+                        const uint32_t other = mesh.indices[f * 3 + k];
+                        if (other != idx) neighbours.insert(other);
+                    }
+                }
+            }
+            std::array<float, 3> avg = {0, 0, 0};
+            for (uint32_t other : neighbours) {
+                const float* p = &mesh.vertices[other * 6];
+                avg[0] += p[0]; avg[1] += p[1]; avg[2] += p[2];
+            }
+            if (!neighbours.empty()) {
+                const float inv = 1.0f / static_cast<float>(neighbours.size());
+                avg = {avg[0] * inv, avg[1] * inv, avg[2] * inv};
+            } else {
+                const float* p = &mesh.vertices[idx * 6];
+                avg = {p[0], p[1], p[2]};
+            }
+            targets.push_back(avg);
+        }
+        const float blend = std::min(1.0f, brushStrength_ * 10.0f);
+        for (size_t i = 0; i < affected.size(); ++i) {
+            float* p = &mesh.vertices[affected[i] * 6];
+            for (int k = 0; k < 3; ++k) p[k] += (targets[i][k] - p[k]) * blend;
+        }
+    } else {
+        const float sign = brushMode_ == 1 ? -1.0f : 1.0f;
+        for (uint32_t idx : affected) {
+            float* p = &mesh.vertices[idx * 6];
+            const float dx = p[0] - hit.point[0], dy = p[1] - hit.point[1], dz = p[2] - hit.point[2];
+            const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+            const float falloff = localRadius > 0.0f ? std::max(0.0f, 1.0f - dist / localRadius) : 0.0f;
+            const float amount = sign * brushStrength_ * falloff / std::max(worldScale, 1e-6f);
+            if (brushMode_ == 3) {
+                p[0] += p[3] * amount; p[1] += p[4] * amount; p[2] += p[5] * amount;
+            } else {
+                p[0] += hit.normal[0] * amount; p[1] += hit.normal[1] * amount; p[2] += hit.normal[2] * amount;
+            }
+        }
+    }
+
+    adjacency.setSelected(affected);
+    adjacency.recomputeNormals(&mesh);
+    sculptDirty_.insert(node->meshRef);
+
+    // Dirty-range upload of the affected vertices (sorted, merged runs).
+    std::sort(affected.begin(), affected.end());
+    glBindBuffer(GL_ARRAY_BUFFER, gpu->vbo);
+    size_t i = 0;
+    while (i < affected.size()) {
+        size_t j = i;
+        while (j + 1 < affected.size() && affected[j + 1] == affected[j] + 1) ++j;
+        const uint32_t first = affected[i];
+        const size_t count = j - i + 1;
+        glBufferSubData(GL_ARRAY_BUFFER, static_cast<GLintptr>(first * 6 * sizeof(float)),
+                        static_cast<GLsizeiptr>(count * 6 * sizeof(float)), &mesh.vertices[first * 6]);
+        i = j + 1;
+    }
+    return static_cast<int>(affected.size());
+}
+
+bool GlRenderer::undoSculpt() {
+    if (sculptUndo_.empty()) return false;
+    SculptEntry entry = std::move(sculptUndo_.back());
+    sculptUndo_.pop_back();
+    const auto it = cpuMeshes_.find(entry.ref);
+    if (it == cpuMeshes_.end()) return false;
+    entry.command.undo(&it->second);
+    sculptDirty_.insert(entry.ref);
+    const auto gpuIt = gpuMeshes_.find(entry.ref);
+    if (gpuIt != gpuMeshes_.end() && gpuIt->second.vbo) {
+        glBindBuffer(GL_ARRAY_BUFFER, gpuIt->second.vbo);
+        glBufferData(GL_ARRAY_BUFFER, it->second.vertices.size() * sizeof(float), it->second.vertices.data(), GL_DYNAMIC_DRAW);
+    }
+    sculptRedo_.push_back(std::move(entry));
+    return true;
+}
+
+bool GlRenderer::redoSculpt() {
+    if (sculptRedo_.empty()) return false;
+    SculptEntry entry = std::move(sculptRedo_.back());
+    sculptRedo_.pop_back();
+    const auto it = cpuMeshes_.find(entry.ref);
+    if (it == cpuMeshes_.end()) return false;
+    entry.command.redo(&it->second);
+    sculptDirty_.insert(entry.ref);
+    const auto gpuIt = gpuMeshes_.find(entry.ref);
+    if (gpuIt != gpuMeshes_.end() && gpuIt->second.vbo) {
+        glBindBuffer(GL_ARRAY_BUFFER, gpuIt->second.vbo);
+        glBufferData(GL_ARRAY_BUFFER, it->second.vertices.size() * sizeof(float), it->second.vertices.data(), GL_DYNAMIC_DRAW);
+    }
+    sculptUndo_.push_back(std::move(entry));
+    return true;
+}
+
+bool GlRenderer::exportScene(const std::string& path, std::string* error) {
+    Mesh combined;
+    uint32_t exportedNodes = 0;
+    for (const auto& node : scene_.nodes()) {
+        if (!node.visible) continue;
+        Mesh cpu;
+        if (!cpuMeshForRef(node.meshRef, &cpu, error)) return false;
+        float mat[16];
+        node.transform.toMatrix(mat);
+        const uint32_t base = combined.vertexCount();
+        for (uint32_t i = 0; i < cpu.vertexCount(); ++i) {
+            const float* v = &cpu.vertices[i * 6];
+            float p[3], n[3];
+            transformPoint4(mat, v[0], v[1], v[2], p);
+            // Normal transform: use the upper 3x3 (correct for rotation +
+            // uniform scale; non-uniform scale is approximated, then normalized).
+            n[0] = mat[0] * v[3] + mat[4] * v[4] + mat[8] * v[5];
+            n[1] = mat[1] * v[3] + mat[5] * v[4] + mat[9] * v[5];
+            n[2] = mat[2] * v[3] + mat[6] * v[4] + mat[10] * v[5];
+            const float len = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+            if (len > 0.0f) { n[0] /= len; n[1] /= len; n[2] /= len; }
+            combined.vertices.insert(combined.vertices.end(), {p[0], p[1], p[2], n[0], n[1], n[2]});
+        }
+        for (uint32_t idx : cpu.indices) combined.indices.push_back(base + idx);
+        ++exportedNodes;
+    }
+    if (exportedNodes == 0) {
+        if (error) *error = "no visible nodes to export";
+        return false;
+    }
+    LOGI("export scene: %u nodes, %u tris", exportedNodes, combined.triangleCount());
+    return exportGlb(combined, path, error);
 }
 
 void GlRenderer::shutdown() {

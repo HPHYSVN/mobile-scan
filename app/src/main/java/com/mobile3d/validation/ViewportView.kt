@@ -109,14 +109,36 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
         queueEvent { NativeEngine.nativeSetNodeColor(handle, id, r, g, b) }
     }
 
+    fun setBrush(radius: Float, strength: Float, mode: Int) {
+        queueEvent { NativeEngine.nativeSetBrush(handle, radius, strength, mode) }
+    }
+
+    fun brushStroke(nodeId: Long, ndcX: Float, ndcY: Float, phase: Int, callback: (Int) -> Unit = {}) =
+        onGl({ NativeEngine.nativeBrushStroke(handle, nodeId, ndcX, ndcY, phase) }, callback)
+
+    fun pickNode(ndcX: Float, ndcY: Float, callback: (Long) -> Unit) =
+        onGl({ NativeEngine.nativePickNode(handle, ndcX, ndcY) }, callback)
+
+    fun getNodeScreenBox(id: Long, callback: (FloatArray) -> Unit) =
+        onGl({ NativeEngine.nativeGetNodeScreenBox(handle, id) }, callback)
+
+    fun undoSculpt(callback: (Boolean) -> Unit) =
+        onGl({ NativeEngine.nativeUndoSculpt(handle) }, callback)
+
+    fun redoSculpt(callback: (Boolean) -> Unit) =
+        onGl({ NativeEngine.nativeRedoSculpt(handle) }, callback)
+
     fun duplicateNode(id: Long, callback: (Long) -> Unit) =
         onGl({ NativeEngine.nativeDuplicateNode(handle, id) }, callback)
 
     fun removeNode(id: Long, callback: (Boolean) -> Unit) =
         onGl({ NativeEngine.nativeRemoveNode(handle, id) }, callback)
 
-    fun exportNode(id: Long, path: String, callback: (String) -> Unit) =
-        onGl({ NativeEngine.nativeExportNode(handle, id, path) }, callback)
+    fun exportScene(path: String, callback: (String) -> Unit) =
+        onGl({ NativeEngine.nativeExportScene(handle, path) }, callback)
+
+    fun exportNodeEx(id: Long, path: String, format: Int, resolutionPercent: Int, subdivideLevels: Int, callback: (String) -> Unit) =
+        onGl({ NativeEngine.nativeExportNodeEx(handle, id, path, format, resolutionPercent, subdivideLevels) }, callback)
 
     fun saveProject(callback: (String) -> Unit) =
         onGl({ NativeEngine.nativeSaveProject(handle) }, callback)
