@@ -130,20 +130,27 @@ Java_com_mobile3d_validation_NativeEngine_nativeRemoveNode(JNIEnv*, jobject, jlo
     return (r && r->removeNode(static_cast<uint32_t>(id))) ? JNI_TRUE : JNI_FALSE;
 }
 
-// Line format per node: id;name;meshRef;visible;px;py;pz;rx;ry;rz;sx;sy;sz
+JNIEXPORT jboolean JNICALL
+Java_com_mobile3d_validation_NativeEngine_nativeSetNodeColor(JNIEnv*, jobject, jlong handle, jlong id, jfloat r, jfloat g, jfloat b) {
+    auto* renderer = fromHandle(handle);
+    return (renderer && renderer->setNodeColor(static_cast<uint32_t>(id), r, g, b)) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Line format per node: id;name;meshRef;visible;px;py;pz;rx;ry;rz;sx;sy;sz;cr;cg;cb
 // (Names must not contain ';' in this validation build.)
 JNIEXPORT jstring JNICALL
 Java_com_mobile3d_validation_NativeEngine_nativeGetNodes(JNIEnv* env, jobject, jlong handle) {
     std::string out;
     if (auto* r = fromHandle(handle)) {
-        char buf[512];
+        char buf[640];
         for (const auto& node : r->scene().nodes()) {
             const auto& t = node.transform;
-            std::snprintf(buf, sizeof(buf), "%u;%s;%s;%d;%g;%g;%g;%g;%g;%g;%g;%g;%g\n",
+            std::snprintf(buf, sizeof(buf), "%u;%s;%s;%d;%g;%g;%g;%g;%g;%g;%g;%g;%g;%g;%g;%g\n",
                           node.id, node.name.c_str(), node.meshRef.c_str(), node.visible ? 1 : 0,
                           t.position[0], t.position[1], t.position[2],
                           t.rotationEuler[0], t.rotationEuler[1], t.rotationEuler[2],
-                          t.scale[0], t.scale[1], t.scale[2]);
+                          t.scale[0], t.scale[1], t.scale[2],
+                          node.color[0], node.color[1], node.color[2]);
             out += buf;
         }
     }

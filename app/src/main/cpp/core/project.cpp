@@ -84,6 +84,7 @@ bool saveProject(const std::string& dir, const Scene& scene, std::string* error)
         n["name"] = node.name;
         n["mesh"] = node.meshRef;
         n["visible"] = node.visible;
+        n["color"] = vec3(node.color);
         n["transform"]["position"] = vec3(node.transform.position);
         n["transform"]["rotationEuler"] = vec3(node.transform.rotationEuler);
         n["transform"]["scale"] = vec3(node.transform.scale);
@@ -143,6 +144,8 @@ bool loadProject(const std::string& dir, Scene* out, std::string* error) {
         readVec3(t.value("position", json()), node.transform.position, zero);
         readVec3(t.value("rotationEuler", json()), node.transform.rotationEuler, zero);
         readVec3(t.value("scale", json()), node.transform.scale, one);
+        const float defaultColor[3] = {0.25f, 0.55f, 0.9f};
+        readVec3(n.value("color", json()), node.color, defaultColor);
         maxId = std::max(maxId, node.id);
         nodes.push_back(std::move(node));
     }

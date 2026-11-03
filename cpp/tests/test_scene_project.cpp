@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
     const uint32_t b = scene.addNode("Scan", "meshes/scan.glb");
     assert(a != b);
     auto* nodeB = scene.find(b);
+    nodeB->color[0] = 0.1f; nodeB->color[1] = 0.2f; nodeB->color[2] = 0.3f;
     nodeB->transform.position[0] = -1.5f;
     nodeB->transform.rotationEuler[1] = 0.5f;
     nodeB->visible = false;
@@ -72,6 +73,7 @@ int main(int argc, char** argv) {
     assert(ln != nullptr);
     assert(ln->name == "Scan" && ln->meshRef == "meshes/scan.glb" && !ln->visible);
     assert(ln->transform.equals(nodeB->transform));
+    assert(nearly(ln->color[0], 0.1f) && nearly(ln->color[1], 0.2f) && nearly(ln->color[2], 0.3f));
     // New nodes must not collide with loaded ids.
     const uint32_t c = loaded.addNode("New", "primitive:sphere");
     assert(c > b);

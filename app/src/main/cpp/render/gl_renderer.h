@@ -39,6 +39,7 @@ public:
     uint32_t addPrimitive(const std::string& kind);  // cube/sphere/cylinder/plane
     uint32_t addNode(const std::string& name, const std::string& meshRef);
     bool setNodeTransform(uint32_t id, const float values[9]);  // pos, euler, scale
+    bool setNodeColor(uint32_t id, float r, float g, float b);
     bool removeNode(uint32_t id);
     bool saveProject(std::string* error);
     bool openProject(const std::string& dir, std::string* error);
@@ -64,7 +65,7 @@ private:
     // Creates (once per ref) GPU buffers for a scene meshRef; nullptr on failure.
     GpuMesh* ensureGpuMesh(const std::string& ref);
     bool cpuMeshForRef(const std::string& ref, Mesh* out, std::string* error);
-    void drawMesh(const GpuMesh& gpu, const float* viewProj, const Transform* nodeTransform);
+    void drawMesh(const GpuMesh& gpu, const float* viewProj, const Node* node);
 
     Mesh mesh_;  // legacy single mesh
     unsigned int program_ = 0;

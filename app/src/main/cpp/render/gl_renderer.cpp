@@ -31,13 +31,13 @@ void main() {
 const char* kFragmentShader = R"(#version 300 es
 precision mediump float;
 in vec3 vNormal;
+uniform vec3 uColor;
 out vec4 fragColor;
 void main() {
     vec3 n = normalize(vNormal);
     vec3 lightDir = normalize(vec3(0.5, 0.8, 0.6));
     float diff = max(dot(n, lightDir), 0.0);
-    vec3 base = vec3(0.25, 0.55, 0.9);
-    fragColor = vec4(base * (0.25 + 0.75 * diff), 1.0);
+    fragColor = vec4(uColor * (0.25 + 0.75 * diff), 1.0);
 }
 )";
 
@@ -274,13 +274,14 @@ void GlRenderer::drawFrame() {
         for (const auto& node : scene_.nodes()) {
             if (!node.visible) continue;
             GpuMesh* gpu = ensureGpuMesh(node.meshRef);
-            if (gpu) drawMesh(*gpu, viewProj, &node.transform);
+            if (gpu) drawMesh(*gpu, viewProj, &node);
         }
         return;
     }
 
     glUniformMatrix4fv(glGetUniformLocation(program_, "uMvp"), 1, GL_FALSE, mvp);
     glUniformMatrix3fv(glGetUniformLocation(program_, "uNormalMat"), 1, GL_FALSE, normalMat);
+    glUniform3f(glGetUniformLocation(program_, "uColor"), 0.25f, 0.55f, 0.9f);
     glBindVertexArray(vao_);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh_.indices.size()), GL_UNSIGNED_INT, nullptr);
 }
@@ -362,10 +363,10 @@ GlRenderer::GpuMesh* GlRenderer::ensureGpuMesh(const std::string& ref) {
     return &inserted->second;
 }
 
-void GlRenderer::drawMesh(const GpuMesh& gpu, const float* viewProj, const Transform* nodeTransform) {
+void GlRenderer::drawMesh(const GpuMesh& gpu, const float* viewProj, const Node* node) {
     if (gpu.indexCount == 0) return;
     float nodeMat[16];
-    nodeTransform->toMatrix(nodeMat);
+    node->transform.toMatrix(nodeMat);
     // fit = Scale(gpu.scale) * T(-center)
     float fit[16] = {};
     fit[0] = gpu.scale; fit[5] = gpu.scale; fit[10] = gpu.scale; fit[15] = 1.0f;
@@ -381,6 +382,7 @@ void GlRenderer::drawMesh(const GpuMesh& gpu, const float* viewProj, const Trans
                                 world[8], world[9], world[10]};
     glUniformMatrix4fv(glGetUniformLocation(program_, "uMvp"), 1, GL_FALSE, tmp);
     glUniformMatrix3fv(glGetUniformLocation(program_, "uNormalMat"), 1, GL_FALSE, normalMat);
+    glUniform3f(glGetUniformLocation(program_, "uColor"), node->color[0], node->color[1], node->color[2]);
     glBindVertexArray(gpu.vao);
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(gpu.indexCount), GL_UNSIGNED_INT, nullptr);
 }
@@ -419,6 +421,13 @@ bool GlRenderer::setNodeTransform(uint32_t id, const float values[9]) {
 }
 
 bool GlRenderer::removeNode(uint32_t id) { return scene_.removeNode(id); }
+
+bool GlRenderer::setNodeColor(uint32_t id, float r, float g, float b) {
+    Node* node = scene_.find(id);
+    if (!node) return false;
+    node->color[0] = r; node->color[1] = g; node->color[2] = b;
+    return true;
+}
 
 bool GlRenderer::saveProject(std::string* error) {
     if (projectDir_.empty()) {

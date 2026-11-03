@@ -115,6 +115,15 @@ class MainActivity : Activity() {
                 button("Export GLB") { exportSelected() },
             ))
             addView(row(
+                *palette.map { (name, rgb) ->
+                    Button(this@MainActivity).apply {
+                        text = name
+                        setBackgroundColor(rgb)
+                        setOnClickListener { applyColor(rgb) }
+                    }
+                }.toTypedArray()
+            ))
+            addView(row(
                 button("Save") { saveProject(manual = true) },
                 button("Open") { openProject() },
                 button("New") { newProject(withDefaultCube = true) },
@@ -247,6 +256,25 @@ class MainActivity : Activity() {
             Log.i(TAG, "exportNode: ${if (error.isEmpty()) out.absolutePath else error}")
             nodeLabel.text = if (error.isEmpty()) "exported: ${out.path}" else "export failed: $error"
         }
+    }
+
+    private val palette = listOf(
+        "Blue" to 0xFF3F8CD2.toInt(), "Red" to 0xFFD23F3F.toInt(),
+        "Green" to 0xFF3FD26A.toInt(), "Orange" to 0xFFD28A3F.toInt(),
+        "Purple" to 0xFF8A3FD2.toInt(), "Gray" to 0xFF9A9A9A.toInt(),
+        "White" to 0xFFF2F2F2.toInt(), "Black" to 0xFF222222.toInt(),
+    )
+
+    private fun applyColor(argb: Int) {
+        if (selectedId < 0) return
+        val r = android.graphics.Color.red(argb) / 255f
+        val g = android.graphics.Color.green(argb) / 255f
+        val b = android.graphics.Color.blue(argb) / 255f
+        viewport.setNodeColor(selectedId, r, g, b)
+        nodes.firstOrNull { it.id == selectedId }?.color?.let {
+            it[0] = r; it[1] = g; it[2] = b
+        }
+        nodeLabel.text = "color updated"
     }
 
     private fun saveProject(manual: Boolean) {

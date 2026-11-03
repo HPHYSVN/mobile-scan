@@ -26,6 +26,7 @@ struct Node {
     std::string meshRef;
     Transform transform;
     bool visible = true;
+    float color[3] = {0.25f, 0.55f, 0.9f};  // base color (linear-ish, no texture in this stage)
 };
 
 // Flat scene graph for M1 (parenting is a later, deliberate decision).

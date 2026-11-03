@@ -52,6 +52,7 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
     data class NodeInfo(
         val id: Long, val name: String, val meshRef: String, val visible: Boolean,
         val transform: FloatArray,
+        val color: FloatArray = floatArrayOf(0.25f, 0.55f, 0.9f),
     )
 
     private fun <T> onGl(block: () -> T, callback: (T) -> Unit) {
@@ -72,6 +73,10 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
 
     fun setNodeTransform(id: Long, values: FloatArray) {
         queueEvent { NativeEngine.nativeSetNodeTransform(handle, id, values) }
+    }
+
+    fun setNodeColor(id: Long, r: Float, g: Float, b: Float) {
+        queueEvent { NativeEngine.nativeSetNodeColor(handle, id, r, g, b) }
     }
 
     fun removeNode(id: Long, callback: (Boolean) -> Unit) =
@@ -95,6 +100,7 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
             NodeInfo(
                 id = p[0].toLong(), name = p[1], meshRef = p[2], visible = p[3] == "1",
                 transform = FloatArray(9) { p[4 + it].toFloat() },
+                color = if (p.size >= 16) FloatArray(3) { p[13 + it].toFloat() } else floatArrayOf(0.25f, 0.55f, 0.9f),
             )
         }.toList()
 
