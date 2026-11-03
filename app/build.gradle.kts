@@ -50,4 +50,12 @@ android {
 
 dependencies {
     implementation(kotlin("stdlib"))
+    // Capture (M3 slice): CameraX + ComponentActivity + ARCore availability check.
+    // Licenses: AndroidX/ARCore are Apache-2.0 (ARCore also under Google ARCore ToS).
+    implementation("androidx.activity:activity:1.9.3")
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("com.google.ar:core:1.48.0")
 }

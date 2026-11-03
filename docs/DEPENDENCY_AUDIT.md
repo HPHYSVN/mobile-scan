@@ -31,3 +31,11 @@ Chưa xác định Mobile3D là closed-source thương mại hay open-source —
 
 ## Điều chỉnh đã duyệt (2026-11-01)
 Mô hình phân phối chưa quyết định (open/closed). Chính sách mặc định cho tới khi có quyết định khác: **chỉ MIT / Apache-2.0 / BSD**. Cấm GPL/AGPL và mọi license có điều kiện phân phối phức tạp khi chưa có chấp thuận bằng văn bản của human developer. MPL-2.0 chuyển từ "trung bình" thành **cần chấp thuận trước** (áp dụng cho cả quyết định TD-06/libigl).
+
+## Cập nhật 2026-11-03 (đã tích hợp, đã kiểm chứng build/emulator)
+| Dependency | Phiên bản | License | Ghi chú |
+|---|---|---|---|
+| meshoptimizer (chỉ `simplifier.cpp` + header) | commit f0a684f (2026-10-14), vendor kèm LICENSE + VERSION.txt | MIT | Decimation cho Export %; phần còn lại của thư viện không biên dịch vào app |
+| AndroidX Activity / CameraX (core, camera2, lifecycle, view) | activity 1.9.3, camera 1.4.2 | Apache-2.0 | CaptureActivity; `android.useAndroidX=true` từ lát này |
+| ARCore (`com.google.ar:core`) | 1.48.0 | Apache-2.0 + ARCore ToS | Chỉ `checkAvailability` (capability detection). Chưa có AR session |
+APK debug tăng lên ~18 MB sau CameraX/ARCore (đo 2026-11-03) — cần theo dõi bằng release/App Bundle khi phát hành.

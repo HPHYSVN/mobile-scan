@@ -29,3 +29,12 @@ Unit test Kotlin, instrumented test, benchmark tự động (đang thiết kế 
 ## 2026-11-01 — M1 lát 2
 - Emulator (uiautomator-driven, `Emulator Tested`): luồng editor đầy đủ — new project → thêm primitive/fixture → chọn node → slider transform → undo/redo → save → force-stop → reopen khôi phục → export GLB (validator 0/0). File `scene.json` đọc trực tiếp qua `run-as` khớp với trạng thái UI.
 - Regression: project save/load sau sửa atomic-write vẫn pass host test; `.tmp` không còn sót sau save.
+
+## 2026-11-03 — Studio hoàn thiện (Emulator Tested, uiautomator-driven)
+- Material: đổi màu node qua palette, lưu/mở lại trong scene.json (host test color round-trip).
+- Gestures: EDIT kéo 1 ngón (x 0.0→0.6), kéo góc handle (scale 1.0→1.5, box handle vẽ đúng), Sculpt brush trên sphere (affected=15 verts), Duplicate/Delete/Prev/Next.
+- Sculpt persistence: sculpt → Save ghi `meshes/node_2.glb` (38K) → force-stop → mở lại load đúng mesh đã sửa.
+- Export từ app: GLB (validator 0/0 ở vòng trước), OBJ Quad sau sửa libc++: **718 quad + 100 tri** khớp host (721/94); Export %/Subdiv có log tris native.
+- Capture: CameraX mở trên emulator (virtual scene), chụp lưu `source/capture_*.jpg` (185K), ARCore probe trả `unknown/transient` trên emulator (đúng kỳ vọng, không phải hỗ trợ thật).
+- Regression: host CTest 8/8, `run_benchmarks.sh` chạy lại (PSS ~55 MB), assembleRelease thành công (unsigned).
+Tất cả vẫn là `Emulator Tested`. Thiết bị thật / AR session: `Not verified`.

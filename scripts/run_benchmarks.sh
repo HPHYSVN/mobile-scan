@@ -68,10 +68,10 @@ if [ "$EMU" = "1" ]; then LABEL="Emulator Tested"; else LABEL="Verified on Physi
   echo
   echo "## Android ($LABEL)"
   echo "- Model: $MODEL, SDK: $SDK"
-  echo "- 3 cold runs; load ms from logcat, PSS from dumpsys meminfo"
+  echo "- 3 cold launches; PSS from dumpsys meminfo (fixture load is user-driven since the editor UI landed, so no auto load ms is reported)"
   echo
-  echo "| Run | Load ms | PSS KB |"
-  echo "|---|---|---|"
+  echo "| Run | PSS KB |"
+  echo "|---|--- |"
 } >> "$OUT"
 
 "$ADB" install -r app/build/outputs/apk/debug/app-debug.apk >/dev/null
@@ -80,9 +80,8 @@ for run in 1 2 3; do
   "$ADB" logcat -c
   "$ADB" shell am start -n com.mobile3d.validation/.MainActivity >/dev/null
   sleep 10
-  load=$("$ADB" logcat -d -s Mobile3D:* | grep -oE 'loaded .* in [0-9.]+ ms' | grep -oE '[0-9.]+' | tail -1)
   pss=$("$ADB" shell dumpsys meminfo com.mobile3d.validation | awk '/TOTAL PSS:/{print $3}')
-  echo "| $run | ${load:-?} | ${pss:-?} |" >> "$OUT"
+  echo "| $run | ${pss:-?} |" >> "$OUT"
   "$ADB" shell am force-stop com.mobile3d.validation
 done
 

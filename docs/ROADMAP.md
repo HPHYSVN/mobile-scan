@@ -20,3 +20,6 @@
 
 ## Backlog (không cam kết)
 Retopo tự động, boolean, texture painting, animation/rig, iOS port (kiến trúc native C++ cho phép nhưng UI phải viết lại), Vulkan backend.
+
+## Trạng thái 2026-11-03
+M1: đạt trên emulator (editor, material, transform/undo, autosave, import/export, project format). M2: lát cơ bản đạt (4 brush, sculpt undo, persistence) — chưa symmetry/masking/remesh, chưa benchmark thiết bị. M3: đạt phần Capture (CameraX + hướng dẫn + ARCore detection); reconstruction chưa có (cần backend/decision ở milestone riêng). M4: đạt phần export (format/topology/độ phân giải/subdiv, scene export); chưa UV/baking/LOD chain preset Unity/Unreal. M5: chưa bắt đầu. Mọi mục "đạt" đều là `Emulator Tested`, chưa `Verified on Physical Device`.

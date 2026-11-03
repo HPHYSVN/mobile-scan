@@ -176,6 +176,9 @@ class MainActivity : Activity() {
                 button("Plane") { addPrimitive("plane") },
             ))
             addView(row(
+                button("Capture") {
+                    startActivity(android.content.Intent(this@MainActivity, CaptureActivity::class.java))
+                },
                 button("Import File") { pickFile() },
                 button("Export Scene") { exportScene() },
             ))
@@ -272,35 +275,42 @@ class MainActivity : Activity() {
     }
 
     private fun showHelp(firstRun: Boolean) {
-        val intro = if (firstRun) "Lan dau su dung - doc 30 giay. " else ""
+        val intro = if (firstRun) "Lần đầu sử dụng — đọc 30 giây. " else ""
         val text = intro + """
-            MOBILE 3D STUDIO - HUONG DAN NHANH
+            MOBILE 3D STUDIO — HƯỚNG DẪN NHANH
 
-            CHE DO (hang tren cung):
-            - View: 1 ngon xoay, 2 ngon zoom/pan, 3 ngon vuot doc de zoom. Cham vao vat de chon.
-            - Edit: keo 1 ngon de di chuyen, keo goc (o vuong xanh) de scale, 2 ngon pinch scale/xoay,
-              3 ngon vuot doc de nang-ha, cham 2 lan de nhan ban.
-            - Sculpt: 1 ngon ve brush, 2 ngon xoay camera. Brush Draw/Dig/Smooth/Inflate,
-              Brush R/S la ban kinh/luc, Sculpt Undo/Redo de hoan tac.
+            CHẾ ĐỘ (hàng trên cùng):
+            • View: 1 ngón xoay, 2 ngón zoom/pan, 3 ngón vuốt dọc để zoom. Chạm vào vật để chọn.
+            • Edit: kéo 1 ngón để di chuyển, kéo góc (ô vuông xanh) để scale, 2 ngón pinch scale/xoay,
+              3 ngón vuốt dọc để nâng–hạ, chạm 2 lần để nhân bản.
+            • Sculpt: 1 ngón vẽ brush lên mô hình, 2 ngón xoay camera.
+              Brush Draw (nổi), Dig (lõm), Smooth (mịn), Inflate (phồng).
+              Brush R/S là bán kính/lực. Sculpt Undo/Redo để hoàn tác.
 
-            VAT: Cube/Sphere/Cylinder/Plane, Import fixture, Prev/Next, Duplicate, Delete.
-            MAU: chon vat roi bam mau o hang mau.
-            TRANSFORM: PosX/RotY/Scale, Undo/Redo cho transform.
+            VẬT THỂ: Cube/Sphere/Cylinder/Plane thêm vật mới. Import File nạp .glb/.obj từ máy,
+            Import fixture nạp mô hình mẫu. Prev/Next chọn vật, Duplicate nhân bản, Delete xóa.
+            MÀU SẮC: chọn vật rồi bấm màu ở hàng màu để đổi màu vật liệu.
+            TRANSFORM: PosX/RotY/Scale bằng thanh trượt, Undo/Redo cho transform.
 
-            XUAT FILE (Export):
-            - Format GLB (triangle, cho Unity/Unreal/Blender), OBJ Tri, OBJ Quad
-              (polygon gop tu giac dong phang, tien sua tren Blender).
-            - Export % = do phan giai (giam % = giam polygon). Subdiv 0-2 chia nho be mat.
-            - File nam trong thu muc exports cua ung dung.
+            CAPTURE: chụp ảnh quanh vật thể vào thư mục source/ của dự án (mỗi ảnh chồng lấp ~70%,
+            đủ sáng, nét). Ảnh là đầu vào cho bước tái tạo 3D; bản này chưa tái tạo tự động —
+            trạng thái ARCore hiển thị ngay trong màn hình Capture.
 
-            DU AN: Save/Open/New, tu dong luu khi thoat app.
-            Du lieu: current_project (manifest.json + scene.json + meshes/).
-            Meo: Reset Cam neu lac huong. Edit truoc, Sculpt sau.
+            XUẤT FILE:
+            • Export (theo vật đang chọn): Format GLB (triangle, cho Unity/Unreal/Blender),
+              OBJ Tri, hoặc OBJ Quad (polygon gộp tứ giác đồng phẳng, tiện sửa trên Blender).
+            • Export % = độ phân giải (giảm % = giảm polygon bằng decimation), Subdiv 0–2 chia nhỏ bề mặt.
+            • Export Scene: xuất toàn bộ cảnh thành 1 file GLB (đã bake transform).
+            File nằm trong thư mục exports của ứng dụng.
+
+            DỰ ÁN: Save/Open/New. Tự động lưu khi thoát ra màn hình chính.
+            Dữ liệu: current_project (manifest.json + scene.json + meshes/ + source/).
+            Mẹo: Reset Cam nếu lạc hướng. Edit trước, Sculpt sau vì Sculpt sửa trực tiếp lưới.
         """.trimIndent()
         android.app.AlertDialog.Builder(this)
-            .setTitle("Huong dan su dung")
+            .setTitle("Hướng dẫn sử dụng")
             .setMessage(text)
-            .setPositiveButton("Da hieu") { dialog, _ -> dialog.dismiss() }
+            .setPositiveButton("Đã hiểu") { dialog, _ -> dialog.dismiss() }
             .show()
     }
 

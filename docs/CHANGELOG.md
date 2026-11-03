@@ -40,3 +40,10 @@
 - Kiểm chứng emulator bằng uiautomator + adb tap: thêm node (nodes=3), slider đổi x=0.0→1.7, Undo→0.0, Redo→1.7, Save→force-stop→mở lại khôi phục đúng 3 nodes và x=1.7; Export GLB validate Khronos 0 errors/0 warnings. Nhãn: `Emulator Tested`.
 - Bug đã sửa: kill tiến trình giữa lúc autosave làm `manifest.json` bị cắt cụt (mở project thất bại). `core/project` nay ghi file qua `.tmp` + rename nguyên tử, manifest ghi sau cùng làm commit marker. Host CTest vẫn 6/6.
 - Chưa làm: material, gizmo, import qua file picker (SAF), export toàn scene (hiện export từng node, không gồm transform), Compose. Deform spike M0 vẫn còn ở đường legacy khi scene rỗng.
+
+## 2026-11-03 — Hoàn thiện studio (M1 đầy đủ + lát M2/M3/M4)
+- Material màu theo node + palette; chế độ View/Edit/Sculpt với gesture 1/2/3 ngón (orbit, pan, zoom, kéo di chuyển, pinch scale, xoay, nâng-hạ, chạm 2 lần nhân bản, chọn vật bằng raycast); handle kéo góc theo screen-box từ native; Duplicate; Reset Cam.
+- Sculpt thật: raycast (core/raycast, host test) + brush Draw/Dig/Smooth/Inflate, bán kính/lực, undo/redo theo stroke (snapshot vùng), dirty-range upload; mesh instance riêng theo node; Save ghi geometry đã sculpt thành `meshes/node_<id>.glb`.
+- Export nâng cao: GLB / OBJ triangle / OBJ polygon-quad (gộp tứ giác, ngưỡng 0.98), Export % decimation bằng meshoptimizer (MIT, vendor subset), Subdiv 0–2, Export Scene bake transform. Sửa bug quad merge chết trên Android do `std::minmax` (libc++).
+- Capture: CameraX (Apache-2.0) chụp ảnh vào `source/` kèm hướng dẫn chụp; ARCore chỉ probe availability. Import File qua SAF; Help/Hướng dẫn lần đầu trong app; panel điều khiển cuộn được, giới hạn chiều cao.
+- Build release (unsigned) thành công; host CTest 8/8.
