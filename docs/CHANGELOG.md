@@ -57,3 +57,10 @@
 - Sửa theo phần tử: Edit có Object/Vertex/Edge/Face — chạm chọn đỉnh/cạnh/mặt (highlight điểm cam), kéo để dời, undo chung với sculpt. `core/raycast` có host test.
 - Sửa thumbnail race: Save+Thumbnail gộp một GL event (`nativeSaveProjectWithThumbnail`) vì PixelCopy/event rời không chạy kịp khi activity pause.
 - Kiểm chứng emulator: tạo dự án → sửa đỉnh kéo thành mũi nhọn → về danh sách thấy thumbnail đúng mô hình; host CTest 8/8; release build OK. Vẫn `Emulator Tested`.
+
+## 2026-11-05 — Scan + Server tái tạo 3D (Linux + Windows scripts)
+- Server FastAPI (`server/`): phiên ảnh (upload idempotent theo tên → tải tiếp được), job nền photogrammetry thật: pycolmap (COLMAP SfM) → Open3D Poisson → trimesh GLB, trạng thái stage/progress, tải result, xoá phiên, API key tuỳ chọn. Script Windows: `setup_windows.ps1` + `run_windows.bat` (chưa kiểm chứng trên máy Windows).
+- Kiểm thử server bằng dataset công khai COLMAP south-building (128 ảnh, github.com/colmap/colmap releases): 26 ảnh/43s (đăng ký 13), 43 ảnh/88s (đăng ký 43/43, 21,726 điểm, 10,321 mặt, GLB 208KB; lượt chạy trong app: 14,148 mặt). API e2e test pass (upload/trùng lặp/trạng thái/409/xoá).
+- Android màn Scan gọn 1 màn: preview CameraX, thẻ khả năng (ARCore availability, Depth API bằng session thật khi ARCore có mặt, camera ToF/Depth-output qua Camera2; ghi rõ Android không có LiDAR kiểu iPhone), chụp vào `source/`, URL server cấu hình được, progress theo stage, resume bằng danh sách file trên server + retry, tải GLB về `meshes/scan_result.glb` và tự thêm vào cảnh (kể cả khi editor bị đóng — pending marker).
+- Tích hợp emulator end-to-end: seed 43 ảnh dataset vào dự án → app tải lên server host (10.0.2.2) → job xong → tải 285KB GLB → node "Scan result" 14,148 tris render trong editor. Sửa trong quá trình: cleartext HTTP cho LAN, quyền INTERNET, resume/retry.
+- Giới hạn thật: không có dense MVS nên bề mặt Poisson từ điểm thưa còn thô; AR session chưa chạy (chỉ detection) — cần thiết bị thật; Windows chưa test.

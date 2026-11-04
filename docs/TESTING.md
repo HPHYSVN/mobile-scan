@@ -43,3 +43,8 @@ Tất cả vẫn là `Emulator Tested`. Thiết bị thật / AR session: `Not v
 - ProjectsActivity: danh sách rỗng hiển thị hướng dẫn; tạo dự án mở editor; quay lại bằng ☰ → Danh sách dự án: thẻ dự án hiện thumbnail (480x1066 PNG chụp bằng glReadPixels, 29K) đúng mô hình đã kéo đỉnh.
 - Editor layout: screenshot xác nhận ☰ trái trên, ? giữa, ↩/↪ phải, 4 nút Create/Edit/Sculpt/Export dưới cùng; Edit bung panel Object/Vertex/Edge/Face + sliders + Display/Grid + palette; lưới grid + 3 trục màu + cạnh tam giác trên khối hiển thị đúng.
 - Vertex edit: chạm chọn được 1 đỉnh (log pickElement verts=1, điểm cam highlight), kéo làm khối biến dạng rõ rệt. Chưa test tự động Edge/Face riêng (cùng đường code pickElement mode 2/3) — ghi nhận là kiểm chứng một phần.
+
+## 2026-11-05 — Scan/server verification
+- Server (Linux, máy dev): API e2e script `server/tests/test_server_e2e.py` pass. Hai job thật trên dataset COLMAP south-building: xong 42.8s (26 ảnh) và 88.3s (43 ảnh, đăng ký đủ 43). GLB đọc lại bằng trimesh (đúng số verts/faces đã báo cáo).
+- App (Emulator Tested): Scan hiển thị đúng 43 ảnh đã seed, capability probe trả kết quả trung thực trên emulator (ARCore chưa rõ, không ToF). Luồng đầy đủ trong app: upload (resume bỏ qua 31 file đã có sau lần đứt kết nối) → job → download → node vào scene render được (screenshot). Hai lỗi hạ tầng đã sửa và test lại: cleartext HTTP, thiếu INTERNET permission.
+- Chưa kiểm chứng: ARCore session/Depth trên máy thật, server trên Windows (chỉ có script + wheel chính thức), chất lượng tái tạo trên ảnh chụp điện thoại thật.

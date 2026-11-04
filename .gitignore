@@ -9,3 +9,7 @@ local.properties
 *.aab
 # Generated benchmark fixtures (see scripts/generate_fixtures.py)
 cpp/tests/fixtures/*.glb
+# Scan server (local venv + session data are machine state, not source)
+server/.venv/
+server/data/
+__pycache__/

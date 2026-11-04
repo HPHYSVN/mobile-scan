@@ -171,7 +171,7 @@ class MainActivity : Activity() {
             addView(rowOf(
                 button("Import File") { pickFile() },
                 button("Import Fixture") { importFixture() },
-                button("Capture") { startActivity(Intent(this@MainActivity, CaptureActivity::class.java)) },
+                button("Scan") { startScan() },
             ))
         }
         panels["edit"] = categoryPanel {
@@ -571,6 +571,36 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun checkPendingScanResult() {
+        val marker = File(projectDir, "pending_scan_result.txt")
+        if (!marker.exists()) return
+        val meshRef = marker.readText().trim()
+        if (meshRef.isEmpty()) {
+            marker.delete()
+            return
+        }
+        viewport.fetchNodes { list ->
+            nodes = list
+            if (list.none { it.meshRef.contains("scan_result") }) {
+                viewport.addNode("Scan result", meshRef) { id ->
+                    selectedId = id
+                    refreshNodes()
+                }
+            }
+            marker.delete()
+        }
+    }
+
+    private fun startScan() {
+        @Suppress("DEPRECATION")
+        startActivityForResult(
+            Intent(this, ScanActivity::class.java).apply {
+                putExtra("projectDir", projectDir.absolutePath)
+            },
+            REQUEST_SCAN,
+        )
+    }
+
     private fun pickFile() {
         @Suppress("DEPRECATION")
         startActivityForResult(
@@ -587,6 +617,14 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_PICK_FILE && resultCode == RESULT_OK) {
             data?.data?.let { importPickedFile(it) }
+        }
+        if (requestCode == REQUEST_SCAN && resultCode == RESULT_OK) {
+            val mesh = data?.getStringExtra("resultMesh") ?: return
+            viewport.addNode("Scan result", mesh) { id ->
+                selectedId = id
+                refreshNodes()
+                toggleCategory("edit")
+            }
         }
     }
 
@@ -775,6 +813,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        checkPendingScanResult()
         viewport.onResume()
         handler.postDelayed(statsTick, 1000)
     }
@@ -794,5 +833,6 @@ class MainActivity : Activity() {
     companion object {
         private const val TAG = "Mobile3D"
         private const val REQUEST_PICK_FILE = 4101
+        private const val REQUEST_SCAN = 4103
     }
 }

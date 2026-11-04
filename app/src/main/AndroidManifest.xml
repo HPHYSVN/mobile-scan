@@ -12,9 +12,15 @@
         android:required="false" />
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Cleartext is allowed so the app can reach the self-hosted scan
+         server on the local network (http://10.0.2.2 / LAN IP). Do not use
+         this build to talk to untrusted public servers. -->
     <application
         android:label="Mobile3D Studio"
+        android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <meta-data
             android:name="com.google.ar.core"
@@ -32,7 +38,7 @@
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false" />
         <activity
-            android:name=".CaptureActivity"
+            android:name=".ScanActivity"
             android:exported="false" />
     </application>
 </manifest>
