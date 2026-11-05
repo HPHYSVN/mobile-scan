@@ -269,6 +269,8 @@ class MainActivity : Activity() {
         benchmarkJni()
         applyBrushSettings()
         viewport.setDisplayMode(displayMode)
+        viewport.orbitSpeed = getSharedPreferences("mobile3d", MODE_PRIVATE)
+            .getFloat("orbit_speed", 1.0f)
 
         val prefs = getSharedPreferences("mobile3d", MODE_PRIVATE)
         if (!prefs.getBoolean("help_seen", false)) {
@@ -348,7 +350,8 @@ class MainActivity : Activity() {
     private fun showMenu() {
         val items = arrayOf(
             "Lưu dự án (Save)", "Mở lại dự án (Open)", "Dự án mới (New)",
-            "Danh sách dự án", "Đặt lại camera", "Chụp thumbnail ngay",
+            "Danh sách dự án", "Đặt lại camera", "Tốc độ xoay camera",
+            "Chụp thumbnail ngay",
         )
         AlertDialog.Builder(this)
             .setTitle("$projectName — Tuỳ chọn")
@@ -359,10 +362,49 @@ class MainActivity : Activity() {
                     2 -> confirmNewProject()
                     3 -> finish()
                     4 -> viewport.resetCamera()
-                    5 -> captureThumbnail()
+                    5 -> showOrbitSpeedDialog()
+                    6 -> captureThumbnail()
                 }
             }
             .setNegativeButton("Đóng", null)
+            .show()
+    }
+
+    private fun showOrbitSpeedDialog() {
+        val prefs = getSharedPreferences("mobile3d", MODE_PRIVATE)
+        val current = prefs.getFloat("orbit_speed", 1.0f)
+        val label = TextView(this).apply {
+            textSize = 15f
+            setPadding(24, 16, 24, 0)
+        }
+        val seek = SeekBar(this).apply {
+            max = 275  // 0.25x .. 3.0x
+            progress = ((current - 0.25f) * 100).toInt()
+            label.text = "Tốc độ xoay: %.2fx".format(current)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar?, value: Int, fromUser: Boolean) {
+                    val speed = 0.25f + value / 100f
+                    label.text = "Tốc độ xoay: %.2fx".format(speed)
+                    viewport.orbitSpeed = speed
+                }
+                override fun onStartTrackingTouch(bar: SeekBar?) {}
+                override fun onStopTrackingTouch(bar: SeekBar?) {}
+            })
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(label)
+            addView(seek)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Tốc độ xoay camera")
+            .setView(container)
+            .setPositiveButton("Lưu") { _, _ ->
+                prefs.edit().putFloat("orbit_speed", viewport.orbitSpeed).apply()
+            }
+            .setNegativeButton("Huỷ") { _, _ ->
+                viewport.orbitSpeed = prefs.getFloat("orbit_speed", 1.0f)
+            }
             .show()
     }
 
@@ -377,20 +419,14 @@ class MainActivity : Activity() {
 
     // ---------- gestures ----------
     private fun wireGestures() {
-        handleOverlay.onMove = { dx, dy ->
-            val wpp = viewport.worldPerPixel()
-            mutateSelected { tr -> tr[0] += dx * wpp; tr[1] -= dy * wpp }
-        }
+        handleOverlay.onMove = { dx, dy -> dragSelectedInScreenPlane(dx, dy) }
         handleOverlay.onCornerScale = { factor ->
             mutateSelected { tr ->
                 val s = (tr[6] * factor).coerceIn(0.05f, 20f)
                 tr[6] = s; tr[7] = s; tr[8] = s
             }
         }
-        viewport.onEditDrag = { dx, dy ->
-            val wpp = viewport.worldPerPixel()
-            mutateSelected { tr -> tr[0] += dx * wpp; tr[1] -= dy * wpp }
-        }
+        viewport.onEditDrag = { dx, dy -> dragSelectedInScreenPlane(dx, dy) }
         viewport.onEditMoveY = { dyPx ->
             val wpp = viewport.worldPerPixel()
             if (viewport.elementMode > 0) viewport.moveElement(0f, -dyPx)
@@ -468,6 +504,18 @@ class MainActivity : Activity() {
         seekRotY.progress = Math.toDegrees(t[4].toDouble()).toInt().mod(360)
         seekScale.progress = (t[6] * 10).toInt() - 2
         syncingSliders = false
+    }
+
+    /** Moves the selected node in the camera plane: right/up on screen,
+     * so dragging always follows the finger at any orbit angle. */
+    private fun dragSelectedInScreenPlane(dxPx: Float, dyPx: Float) {
+        val wpp = viewport.worldPerPixel()
+        val axes = viewport.cameraRightUp()
+        mutateSelected { tr ->
+            for (k in 0..2) {
+                tr[k] += axes[k] * dxPx * wpp + axes[3 + k] * (-dyPx) * wpp
+            }
+        }
     }
 
     private fun mutateSelected(change: (FloatArray) -> Unit) {
@@ -781,6 +829,7 @@ class MainActivity : Activity() {
             • Kéo 1 ngón ở khoảng trống = xoay camera.
             • 2 ngón = camera: pinch zoom, kéo để pan.
             • 3 ngón chạm nhanh = đặt lại camera. 3 ngón vuốt dọc (Edit) = nâng/hạ vật.
+            • Tốc độ xoay: mở ☰ → "Tốc độ xoay camera" (0.25x–3x, được lưu lại).
 
             EDIT — 4 công cụ:
             • Object: kéo để di chuyển vật; kéo góc ô vuông xanh để scale; hoặc dùng PosX/RotY/Scale.

@@ -69,3 +69,8 @@
 - Thêm `applySafeAreaInsets` dùng chung: cộng inset của status bar + display cutout (camera đục lỗ/notch) cho thanh trên, và inset của thanh điều hướng/gesture cho thanh dưới, kèm 6px đệm; hai cạnh ngang cũng né cutout khi xoay ngang.
 - Áp dụng cho cả 3 màn: Editor (☰/?/undo-redo ở trên, 4 nút Create/Edit/Sculpt/Export ở dưới), Danh sách dự án, Scan.
 - Kiểm chứng emulator dọc + ngang bằng screenshot: nút không còn dính sát cạnh hay bị thanh gesture che.
+
+## 2026-11-05 — Đảo chiều vuốt + tốc độ xoay
+- Vuốt xoay camera đổi sang chiều "nắm thế giới kéo" (đảo dấu cả yaw/pitch so với trước — trước đây bị ngược).
+- Kéo vật ở Edit giờ đi theo mặt phẳng camera (camera right/up) thay vì trục thế giới, nên kéo hướng nào vật đi hướng đó ở mọi góc nhìn.
+- Tuỳ chọn "Tốc độ xoay camera" trong menu ☰: slider 0.25x–3x, áp dụng trực tiếp khi kéo thử, lưu vào SharedPreferences (`orbit_speed`), mở lại app giữ nguyên. Kiểm chứng emulator: đặt 2.62x, lưu, mở lại dialog vẫn 2.62x.

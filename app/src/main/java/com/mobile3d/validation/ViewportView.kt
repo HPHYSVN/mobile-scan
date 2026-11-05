@@ -51,6 +51,20 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
     enum class Mode { VIEW, EDIT, SCULPT }
     @Volatile var mode: Mode = Mode.VIEW
 
+    /** Orbit speed multiplier (0.25x-3x), set from the options menu. */
+    @Volatile var orbitSpeed: Float = 1.0f
+
+    /** Camera right/up in world space, so Edit drags follow the finger
+     * regardless of orbit angle instead of sliding along world axes. */
+    fun cameraRightUp(): FloatArray {
+        val cy = kotlin.math.cos(yaw); val sy = kotlin.math.sin(yaw)
+        val cx = kotlin.math.cos(pitch); val sx = kotlin.math.sin(pitch)
+        return floatArrayOf(
+            cy.toFloat(), 0f, (-sy).toFloat(),          // right
+            (sy * sx).toFloat(), cx.toFloat(), (cy * sx).toFloat(),  // up
+        )
+    }
+
     @Volatile private var panX = 0f
     @Volatile private var panY = 0f
 
@@ -264,8 +278,9 @@ class ViewportView(context: Context) : GLSurfaceView(context) {
                 when (event.pointerCount) {
                     1 -> when (mode) {
                         Mode.VIEW -> {
-                            yaw += (event.x - lastX) * 0.01f
-                            pitch = (pitch + (event.y - lastY) * 0.01f).coerceIn(-1.4f, 1.4f)
+                            val step = 0.01f * orbitSpeed
+                            yaw -= (event.x - lastX) * step
+                            pitch = (pitch - (event.y - lastY) * step).coerceIn(-1.4f, 1.4f)
                         }
                         Mode.EDIT -> {
                             if (elementMode > 0) onElementDrag?.invoke(event.x - lastX, event.y - lastY)
