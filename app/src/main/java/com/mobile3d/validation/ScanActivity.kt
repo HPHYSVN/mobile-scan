@@ -109,7 +109,11 @@ class ScanActivity : ComponentActivity() {
             addView(stageLabel)
             addView(doneButton)
         }
-        setContentView(ScrollView(this).apply { addView(root) })
+        val scroll = ScrollView(this).apply { addView(root) }
+        scroll.applySafeAreaInsets { insetTop, insetBottom, insetLeft, insetRight ->
+            scroll.setPadding(insetLeft, insetTop, insetRight, insetBottom)
+        }
+        setContentView(scroll)
 
         photoCount = photoFiles().size
         updateStatus()

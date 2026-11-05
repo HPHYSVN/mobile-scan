@@ -56,6 +56,9 @@ class ProjectsActivity : Activity() {
             addView(ScrollView(this@ProjectsActivity).apply { addView(listContainer) },
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         }
+        root.applySafeAreaInsets { insetTop, insetBottom, insetLeft, insetRight ->
+            root.setPadding(insetLeft, insetTop, insetRight, insetBottom)
+        }
         setContentView(root)
     }
 

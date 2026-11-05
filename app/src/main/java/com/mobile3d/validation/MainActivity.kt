@@ -256,6 +256,13 @@ class MainActivity : Activity() {
             android.view.Gravity.BOTTOM,
         ))
 
+        // Keep the top bar below the status bar / camera cutout and the
+        // bottom bar above the navigation/gesture bar (+6px breathing room).
+        root.applySafeAreaInsets { insetTop, insetBottom, insetLeft, insetRight ->
+            root.setPadding(insetLeft, 0, insetRight, 0)
+            (topBar.layoutParams as FrameLayout.LayoutParams).topMargin = insetTop + 6
+            (bottom.layoutParams as FrameLayout.LayoutParams).bottomMargin = insetBottom + 6
+        }
         setContentView(root)
 
         if (File(projectDir, "manifest.json").exists()) openProject() else newProject(withDefaultCube = true)

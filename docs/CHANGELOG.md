@@ -64,3 +64,8 @@
 - Android màn Scan gọn 1 màn: preview CameraX, thẻ khả năng (ARCore availability, Depth API bằng session thật khi ARCore có mặt, camera ToF/Depth-output qua Camera2; ghi rõ Android không có LiDAR kiểu iPhone), chụp vào `source/`, URL server cấu hình được, progress theo stage, resume bằng danh sách file trên server + retry, tải GLB về `meshes/scan_result.glb` và tự thêm vào cảnh (kể cả khi editor bị đóng — pending marker).
 - Tích hợp emulator end-to-end: seed 43 ảnh dataset vào dự án → app tải lên server host (10.0.2.2) → job xong → tải 285KB GLB → node "Scan result" 14,148 tris render trong editor. Sửa trong quá trình: cleartext HTTP cho LAN, quyền INTERNET, resume/retry.
 - Giới hạn thật: không có dense MVS nên bề mặt Poisson từ điểm thưa còn thô; AR session chưa chạy (chỉ detection) — cần thiết bị thật; Windows chưa test.
+
+## 2026-11-05 — Safe-area cho nút bấm
+- Thêm `applySafeAreaInsets` dùng chung: cộng inset của status bar + display cutout (camera đục lỗ/notch) cho thanh trên, và inset của thanh điều hướng/gesture cho thanh dưới, kèm 6px đệm; hai cạnh ngang cũng né cutout khi xoay ngang.
+- Áp dụng cho cả 3 màn: Editor (☰/?/undo-redo ở trên, 4 nút Create/Edit/Sculpt/Export ở dưới), Danh sách dự án, Scan.
+- Kiểm chứng emulator dọc + ngang bằng screenshot: nút không còn dính sát cạnh hay bị thanh gesture che.

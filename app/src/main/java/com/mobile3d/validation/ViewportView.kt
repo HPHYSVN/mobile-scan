@@ -8,6 +8,23 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.abs
 
+/** Applies system-window + display-cutout insets so overlay bars never sit
+ * under the status bar, punch-hole camera, or gesture/navigation bar. */
+fun android.view.View.applySafeAreaInsets(
+    onInsets: (top: Int, bottom: Int, left: Int, right: Int) -> Unit,
+) {
+    setOnApplyWindowInsetsListener { _, insets ->
+        val cutout = insets.displayCutout
+        val top = maxOf(insets.systemWindowInsetTop, cutout?.safeInsetTop ?: 0)
+        val bottom = maxOf(insets.systemWindowInsetBottom, cutout?.safeInsetBottom ?: 0)
+        val left = maxOf(insets.systemWindowInsetLeft, cutout?.safeInsetLeft ?: 0)
+        val right = maxOf(insets.systemWindowInsetRight, cutout?.safeInsetRight ?: 0)
+        onInsets(top, bottom, left, right)
+        insets
+    }
+    requestApplyInsets()
+}
+
 class ViewportView(context: Context) : GLSurfaceView(context) {
 
     private val handle: Long = NativeEngine.nativeCreate()
